@@ -239,15 +239,6 @@ export const ProjectShowPage: React.FC = () => {
               {t('projects.createReleaseButton')}
             </Button>
           )}
-          {isOwner && !project.archived && (
-            <Button
-              type="primary"
-              icon={<PlusOutlined aria-hidden="true" />}
-              onClick={() => navigate(`/projects/${project.id}/products/new`)}
-            >
-              {t('products.newProduct')}
-            </Button>
-          )}
           {isOwner && (
             <Tooltip title={t('nav.settings')}>
               <Button

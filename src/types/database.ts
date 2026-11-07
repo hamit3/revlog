@@ -244,3 +244,70 @@ export interface BomPnpCheckRun {
   created_at: string;
   profiles?: Profile | null;
 }
+
+export interface ReleaseShareLink {
+  id: string;
+  release_id: string;
+  project_id: string;
+  product_id: string;
+  token_hash: string;
+  expires_at: string;
+  revoked_at: string | null;
+  created_by: string | null;
+  created_at: string;
+  profiles?: Profile | null;
+}
+
+export interface AuditLog {
+  id: string;
+  project_id: string;
+  actor_id: string | null;
+  action: string;
+  target_type: string;
+  target_id: string;
+  metadata: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface PublicSharedReleaseItem {
+  id: string;
+  title: string | null;
+  kind: ItemKind;
+  version_label: string | null;
+  file_name: string | null;
+  file_size: number | null;
+  sha256: string | null;
+  url: string | null;
+  storage_path: string | null;
+  category_name: string | null;
+  category_position: number | null;
+}
+
+export interface PublicSharedRelease {
+  link: {
+    id: string;
+    expires_at: string;
+    created_at: string;
+  };
+  project: {
+    id: string;
+    name: string;
+    description: string | null;
+  };
+  product: {
+    id: string;
+    name: string;
+    code: string | null;
+    kind: string | null;
+  };
+  release: {
+    id: string;
+    version_label: string;
+    notes: string | null;
+    release_date: string | null;
+    published_at: string | null;
+    manifest_hash: string | null;
+    publisher: string;
+  };
+  items: PublicSharedReleaseItem[];
+}

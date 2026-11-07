@@ -24,10 +24,12 @@ import {
   FileSearchOutlined,
   HistoryOutlined,
   LinkOutlined,
+  ShareAltOutlined,
 } from '@ant-design/icons';
 import { tokens } from '../../theme/tokens';
 import { PageHeaderTitle } from '../../components/PageHeaderTitle';
 import { StatusBadge } from '../../components/StatusBadge';
+import { ShareLinkModal } from './ShareLinkModal';
 import { useProductAccess } from '../../lib/useProjectAccess';
 import { formatDateTime, formatFileSize } from '../../lib/format';
 import { computeManifestHash } from '../../lib/manifestHash';
@@ -54,7 +56,12 @@ export const ReleaseShowPage: React.FC = () => {
     releaseId: string;
   }>();
   const { open: notify } = useNotification();
-  const { project, product, isLoading: isAccessLoading } = useProductAccess(projectId, productId);
+  const {
+    project,
+    product,
+    canEditContent,
+    isLoading: isAccessLoading,
+  } = useProductAccess(projectId, productId);
 
   const [release, setRelease] = useState<Release | null>(null);
   const [releaseItems, setReleaseItems] = useState<ReleaseItem[]>([]);
@@ -66,6 +73,7 @@ export const ReleaseShowPage: React.FC = () => {
   const [bomPnpRun, setBomPnpRun] = useState<BomPnpCheckRun | null>(null);
   const [isPackaging, setIsPackaging] = useState<boolean>(false);
   const [packagingStatus, setPackagingStatus] = useState<string | null>(null);
+  const [isShareModalOpen, setIsShareModalOpen] = useState<boolean>(false);
 
   useEffect(() => {
     let active = true;
@@ -430,6 +438,14 @@ export const ReleaseShowPage: React.FC = () => {
               ? packagingStatus || t('releases.downloadPackage')
               : t('releases.downloadPackage')}
           </Button>
+          {canEditContent && (
+            <Button
+              icon={<ShareAltOutlined aria-hidden="true" />}
+              onClick={() => setIsShareModalOpen(true)}
+            >
+              {t('share.button')}
+            </Button>
+          )}
           <Button
             icon={<HistoryOutlined aria-hidden="true" />}
             onClick={() => navigate(`${productBase}/releases`)}
@@ -678,6 +694,13 @@ export const ReleaseShowPage: React.FC = () => {
           {t('items.linkUnverifiedNote')}
         </div>
       )}
+
+      <ShareLinkModal
+        open={isShareModalOpen}
+        onClose={() => setIsShareModalOpen(false)}
+        releaseId={release.id}
+        releaseVersion={release.version_label}
+      />
     </Show>
   );
 };

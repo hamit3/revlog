@@ -11,13 +11,17 @@ import {
   readReleasePackageZip,
 } from '../lib/releasePackage';
 import { sha256HexFromBytes, sha256HexFromFile, sha256HexFromString } from '../lib/sha256';
+import { computeShareTokenHash, generateShareToken } from '../lib/shareToken';
 import type {
+  AuditLog,
   BomPnpCheckRun,
   Product,
   ProjectRelease,
   ProjectReleaseProduct,
+  PublicSharedRelease,
   Release,
   ReleaseItem,
+  ReleaseShareLink,
 } from '../types/database';
 
 const OWNER_ID = '11111111-1111-4111-8111-111111111111';
@@ -808,5 +812,117 @@ describe('Database migrations, products, product & project releases, immutabilit
       [disposableDraftId],
     );
     expect(remainingRuns).toHaveLength(0);
+  });
+
+  it('manages expiring release share links with token hashing, public anon access, revocation, and immutable audit logs', async () => {
+    // 1. Generate a CSPRNG token in plain client code and compute its SHA-256 hash
+    const rawToken = generateShareToken();
+    const tokenHash = await computeShareTokenHash(rawToken);
+    expect(rawToken).toMatch(/^[0-9a-f]{64}$/);
+    expect(tokenHash).toMatch(/^[0-9a-f]{64}$/);
+    expect(rawToken).not.toBe(tokenHash);
+
+    // 2. Viewer and Outsider cannot create share links
+    await expect(
+      ctx.asUser(
+        VIEWER_ID,
+        `select * from public.create_release_share_link($1, $2, now() + interval '7 days')`,
+        [SEED_RELEASE_ID, tokenHash],
+      ),
+    ).rejects.toThrow(/Only project owners and members can create share links/);
+
+    await expect(
+      ctx.asUser(
+        OUTSIDER_ID,
+        `select * from public.create_release_share_link($1, $2, now() + interval '7 days')`,
+        [SEED_RELEASE_ID, tokenHash],
+      ),
+    ).rejects.toThrow(/Only project owners and members can create share links/);
+
+    // 3. Member creates a valid share link for a published release
+    const createdLinks = await ctx.asUser<ReleaseShareLink>(
+      MEMBER_ID,
+      `select * from public.create_release_share_link($1, $2, now() + interval '7 days')`,
+      [SEED_RELEASE_ID, tokenHash],
+    );
+    expect(createdLinks).toHaveLength(1);
+    const link = createdLinks[0]!;
+    expect(link.token_hash).toBe(tokenHash);
+    expect(link.token_hash).not.toContain(rawToken);
+    expect(link.revoked_at).toBeNull();
+    expect(new Date(link.expires_at).getTime()).toBeGreaterThan(Date.now());
+
+    // 4. Verify creation was logged in audit_logs
+    const creationLogs = await ctx.asUser<AuditLog>(
+      MEMBER_ID,
+      `select * from public.audit_logs where target_id = $1 and action = 'share_link.created'`,
+      [link.id],
+    );
+    expect(creationLogs).toHaveLength(1);
+    expect(creationLogs[0]!.actor_id).toBe(MEMBER_ID);
+    expect(creationLogs[0]!.project_id).toBe(SEED_PROJECT_ID);
+    expect(creationLogs[0]!.metadata.version_label).toBe('Rev B');
+
+    // 5. Unauthenticated (anon) visitor accesses the release via public RPC using token hash
+    // In PostgreSQL, anon calls functions with no auth.uid()
+    const sharedData = await ctx.asSuperuser<PublicSharedRelease>(
+      `select public.get_public_shared_release($1) as res`,
+      [tokenHash],
+    );
+    expect(sharedData).toHaveLength(1);
+    const payload = (sharedData[0] as unknown as { res: PublicSharedRelease }).res;
+    expect(payload).not.toBeNull();
+    expect(payload.release.version_label).toBe('Rev B');
+    expect(payload.project.name).toBe('Industrial Telemetry Platform');
+    expect(payload.product.name).toBe('Sensor Board');
+    expect(payload.items.length).toBeGreaterThan(0);
+    expect(payload.items[0]!.file_name).toBeTruthy();
+
+    // 6. Invalid token returns null to public visitor
+    const invalidData = await ctx.asSuperuser<PublicSharedRelease>(
+      `select public.get_public_shared_release($1) as res`,
+      ['0000000000000000000000000000000000000000000000000000000000000000'],
+    );
+    expect((invalidData[0] as unknown as { res: PublicSharedRelease | null }).res).toBeNull();
+
+    // 7. Revoke the share link (Member or Owner can revoke)
+    const revokedRows = await ctx.asUser<ReleaseShareLink>(
+      OWNER_ID,
+      `select * from public.revoke_release_share_link($1)`,
+      [link.id],
+    );
+    expect(revokedRows).toHaveLength(1);
+    expect(revokedRows[0]!.revoked_at).not.toBeNull();
+
+    // 8. Verify revocation was logged in audit_logs
+    const revocationLogs = await ctx.asUser<AuditLog>(
+      OWNER_ID,
+      `select * from public.audit_logs where target_id = $1 and action = 'share_link.revoked'`,
+      [link.id],
+    );
+    expect(revocationLogs).toHaveLength(1);
+    expect(revocationLogs[0]!.actor_id).toBe(OWNER_ID);
+
+    // 9. Once revoked, public visitor can no longer access release data
+    const postRevokeData = await ctx.asSuperuser<PublicSharedRelease>(
+      `select public.get_public_shared_release($1) as res`,
+      [tokenHash],
+    );
+    expect((postRevokeData[0] as unknown as { res: PublicSharedRelease | null }).res).toBeNull();
+
+    // 10. Audit logs are strictly append-only: UPDATE and DELETE are blocked
+    await expect(
+      ctx.asSuperuser(
+        `update public.audit_logs set action = 'tampered' where id = $1`,
+        [creationLogs[0]!.id],
+      ),
+    ).rejects.toThrow(/Audit logs are strictly append-only/);
+
+    await expect(
+      ctx.asSuperuser(
+        `delete from public.audit_logs where id = $1`,
+        [creationLogs[0]!.id],
+      ),
+    ).rejects.toThrow(/Audit logs are strictly append-only/);
   });
 });

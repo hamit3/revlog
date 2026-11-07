@@ -34,6 +34,7 @@ import { ReleaseListPage } from './pages/releases/list';
 import { ReleaseShowPage } from './pages/releases/show';
 import { BomPnpPage } from './pages/bom-pnp/BomPnpPage';
 import { ComparePage } from './pages/compare/ComparePage';
+import { PublicSharePage } from './pages/share/PublicSharePage';
 
 export const App: React.FC = () => {
   return (
@@ -136,6 +137,9 @@ export const App: React.FC = () => {
                 <Route path="/login" element={<AuthPage key="login" mode="login" />} />
                 <Route path="/register" element={<AuthPage key="register" mode="register" />} />
               </Route>
+
+              {/* Public unauthenticated routes */}
+              <Route path="/share/:token" element={<PublicSharePage />} />
 
               <Route
                 element={

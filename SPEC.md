@@ -41,7 +41,7 @@ The MVP (auth, projects, categories, items, release wizard, release history, rel
   - The manifest hash must equal the stored `manifest_hash`; verify it in a test.
   - Package is built on demand and not stored permanently.
 
-- [ ] 4. **Expiring share link**
+- [x] 4. **Expiring share link**
   - Owner or member can create a read-only share link for a published release, with an expiry (e.g. 1, 7, 30 days) and the ability to revoke it.
   - The link opens a minimal public page: release summary, file list, downloads. No account needed.
   - Links are random, unguessable tokens; store only a hash of the token.

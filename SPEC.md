@@ -10,7 +10,7 @@ The MVP (auth, projects, categories, items, release wizard, release history, rel
 - **Deterministic checks.** Hash, BOM/PnP consistency and completeness checks are implemented in plain code. AI may explain or suggest, never decide.
 - **Files stay the customer's.** Store files and metadata; do not send customer files to third-party services without an explicit, per-project opt-in.
 - **Published releases stay immutable.** No feature may modify a published release or its snapshot.
-- **Same design rules as the MVP:** light theme, one accent color, tokens only in `src/theme/tokens.ts`, strings only in `src/i18n/en.json`, English copy.
+- **Same design rules as the MVP:** use refine and ant design components, light theme, one accent color, English copy. do not use any other component library. do not change color scheme or theme. do not use any other font family than the default one. do not use any shadcn ui components. do not change theme and keep the current design.
 - **Each feature gets its own page and sidebar menu entry** where it has a screen of its own. Keep menu labels short and plain.
 - **Migrations only.** Every schema change is a new file in `supabase/migrations/`, with RLS and tests.
 
@@ -169,8 +169,13 @@ Check the terms of service, quotas and pricing of each data provider before buil
 - Replacing ECAD, PLM or ERP tools.
 - Editing design files in the browser.
 
-## Open questions
+## Future scope 
+- Self-hosted distribution.
+- Production Packages : Pre-Configure packages for users to download.
+- Subscription Plans: Introduce different subscription plans for different features and usage limits.
+- CAD integrations: Integrate with popular CAD tools to automate the release process.
+- StrictDoc: Integrate with StrictDoc to automate the release process and requirement bi-directional sync. 
+- Webhooks: Add support for webhooks to notify other systems when a release is published.
+- Web view for StrictDoc Requirements: Create a web view for StrictDoc requirements to allow users to view requirements in the browser without downloading the file. 
+- Share view for releases: Create a share view for releases to allow users to share releases with others.
 
-- Which ECAD export formats beyond KiCad and Altium are needed first?
-- Is a self-hosted distribution required for the first paying customers?
-- Which provider is used for part data (item 19), given quotas and pricing?

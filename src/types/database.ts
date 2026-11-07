@@ -311,3 +311,18 @@ export interface PublicSharedRelease {
   };
   items: PublicSharedReleaseItem[];
 }
+
+export type ChecklistRuleSeverity = 'warning' | 'blocking';
+
+export interface ReleaseChecklistRule {
+  id: string;
+  project_id: string;
+  category_name: string;
+  item_name_pattern: string;
+  severity: ChecklistRuleSeverity;
+  description: string | null;
+  position: number;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}

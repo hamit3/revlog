@@ -9,27 +9,37 @@ import {
   Form,
   Input,
   Popconfirm,
+  Radio,
   Select,
   Spin,
   Table,
   Tabs,
   Tag,
+  Tooltip,
   Typography,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import {
+  CheckSquareOutlined,
   DeleteOutlined,
   InboxOutlined,
+  LockOutlined,
   PlusOutlined,
   SettingOutlined,
   TeamOutlined,
+  UnlockOutlined,
 } from '@ant-design/icons';
 import { tokens } from '../../theme/tokens';
 import { PageHeaderTitle } from '../../components/PageHeaderTitle';
 import { StatusBadge } from '../../components/StatusBadge';
 import { useProjectAccess } from '../../lib/useProjectAccess';
 import { supabaseClient } from '../../providers/supabaseClient';
-import type { ProjectMember, ProjectRole } from '../../types/database';
+import type {
+  ChecklistRuleSeverity,
+  ProjectMember,
+  ProjectRole,
+  ReleaseChecklistRule,
+} from '../../types/database';
 
 interface GeneralFormValues {
   name: string;
@@ -39,6 +49,13 @@ interface GeneralFormValues {
 interface AddMemberFormValues {
   email: string;
   role: ProjectRole;
+}
+
+interface ChecklistRuleFormValues {
+  category_name: string;
+  item_name_pattern: string;
+  severity: ChecklistRuleSeverity;
+  description?: string;
 }
 
 function memberInitials(fullName?: string | null, email?: string | null): string {
@@ -65,12 +82,15 @@ export const ProjectSettingsPage: React.FC = () => {
 
   const [generalForm] = Form.useForm<GeneralFormValues>();
   const [memberForm] = Form.useForm<AddMemberFormValues>();
+  const [checklistForm] = Form.useForm<ChecklistRuleFormValues>();
 
   const [members, setMembers] = useState<ProjectMember[]>([]);
+  const [checklistRules, setChecklistRules] = useState<ReleaseChecklistRule[]>([]);
 
   const [isLoadingData, setIsLoadingData] = useState<boolean>(true);
   const [isSavingGeneral, setIsSavingGeneral] = useState<boolean>(false);
   const [isMutatingMember, setIsMutatingMember] = useState<boolean>(false);
+  const [isMutatingRule, setIsMutatingRule] = useState<boolean>(false);
   const [isArchiving, setIsArchiving] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -78,22 +98,28 @@ export const ProjectSettingsPage: React.FC = () => {
     if (!projectId) {
       return;
     }
-    setIsLoadingData(true);
 
-    const { data, error } = await supabaseClient
-      .from('project_members')
-      .select('*, profiles:user_id(id, full_name, email, created_at)')
-      .eq('project_id', projectId)
-      .order('created_at', { ascending: true });
+    const [membersRes, rulesRes] = await Promise.all([
+      supabaseClient
+        .from('project_members')
+        .select('*, profiles:user_id(id, full_name, email, created_at)')
+        .eq('project_id', projectId)
+        .order('created_at', { ascending: true }),
+      supabaseClient
+        .from('release_checklist_rules')
+        .select('*')
+        .eq('project_id', projectId)
+        .order('position', { ascending: true })
+        .order('created_at', { ascending: true }),
+    ]);
 
-    if (error) {
-      setErrorMessage(error.message);
-      setIsLoadingData(false);
+    if (membersRes.error || rulesRes.error) {
+      setErrorMessage(membersRes.error?.message ?? rulesRes.error?.message ?? null);
       return;
     }
 
-    setMembers((data as ProjectMember[]) ?? []);
-    setIsLoadingData(false);
+    setMembers((membersRes.data as ProjectMember[]) ?? []);
+    setChecklistRules((rulesRes.data as ReleaseChecklistRule[]) ?? []);
   }, [projectId]);
 
   useEffect(() => {
@@ -102,19 +128,29 @@ export const ProjectSettingsPage: React.FC = () => {
       if (!projectId) {
         return;
       }
-      const { data, error } = await supabaseClient
-        .from('project_members')
-        .select('*, profiles:user_id(id, full_name, email, created_at)')
-        .eq('project_id', projectId)
-        .order('created_at', { ascending: true });
+      const [membersRes, rulesRes] = await Promise.all([
+        supabaseClient
+          .from('project_members')
+          .select('*, profiles:user_id(id, full_name, email, created_at)')
+          .eq('project_id', projectId)
+          .order('created_at', { ascending: true }),
+        supabaseClient
+          .from('release_checklist_rules')
+          .select('*')
+          .eq('project_id', projectId)
+          .order('position', { ascending: true })
+          .order('created_at', { ascending: true }),
+      ]);
 
       if (!active) {
         return;
       }
-      if (error) {
-        setErrorMessage(error.message);
+
+      if (membersRes.error || rulesRes.error) {
+        setErrorMessage(membersRes.error?.message ?? rulesRes.error?.message ?? null);
       } else {
-        setMembers((data as ProjectMember[]) ?? []);
+        setMembers((membersRes.data as ProjectMember[]) ?? []);
+        setChecklistRules((rulesRes.data as ReleaseChecklistRule[]) ?? []);
       }
       setIsLoadingData(false);
     })();
@@ -256,6 +292,80 @@ export const ProjectSettingsPage: React.FC = () => {
     });
   };
 
+  const handleAddRule = async (values: ChecklistRuleFormValues) => {
+    if (!projectId) {
+      return;
+    }
+    setIsMutatingRule(true);
+    setErrorMessage(null);
+
+    const { error } = await supabaseClient.from('release_checklist_rules').insert({
+      project_id: projectId,
+      category_name: values.category_name.trim(),
+      item_name_pattern: values.item_name_pattern.trim(),
+      severity: values.severity,
+      description: values.description?.trim() || null,
+      position: checklistRules.length + 1,
+    });
+
+    setIsMutatingRule(false);
+
+    if (error) {
+      setErrorMessage(error.message);
+      return;
+    }
+
+    checklistForm.resetFields();
+    checklistForm.setFieldsValue({ severity: 'warning' });
+    await loadSettingsData();
+    notify?.({ type: 'success', message: t('checklist.ruleCreated') });
+  };
+
+  const handleDeleteRule = async (ruleId: string) => {
+    setIsMutatingRule(true);
+    setErrorMessage(null);
+
+    const { error } = await supabaseClient
+      .from('release_checklist_rules')
+      .delete()
+      .eq('id', ruleId);
+
+    setIsMutatingRule(false);
+
+    if (error) {
+      setErrorMessage(error.message);
+      return;
+    }
+
+    await loadSettingsData();
+    notify?.({ type: 'success', message: t('checklist.ruleDeleted') });
+  };
+
+  const handleToggleSeverity = async (rule: ReleaseChecklistRule) => {
+    if (!isOwner) {
+      return;
+    }
+    const nextSeverity: ChecklistRuleSeverity =
+      rule.severity === 'blocking' ? 'warning' : 'blocking';
+    setIsMutatingRule(true);
+    setErrorMessage(null);
+
+    const { error } = await supabaseClient
+      .from('release_checklist_rules')
+      .update({ severity: nextSeverity })
+      .eq('id', rule.id);
+
+    setIsMutatingRule(false);
+
+    if (error) {
+      setErrorMessage(error.message);
+      return;
+    }
+
+    await loadSettingsData();
+    notify?.({ type: 'success', message: t('checklist.ruleUpdated') });
+  };
+
   if (isAccessLoading || isLoadingData) {
     return (
       <div style={{ padding: tokens.spacing.xxl, textAlign: 'center' }}>
@@ -351,6 +461,99 @@ export const ProjectSettingsPage: React.FC = () => {
           },
         ]
       : []),
+  ];
+
+  const checklistColumns: ColumnsType<ReleaseChecklistRule> = [
+    {
+      title: t('checklist.categoryLabel'),
+      key: 'category_name',
+      dataIndex: 'category_name',
+      width: 160,
+      render: (val: string) => <Tag bordered>{val}</Tag>,
+    },
+    {
+      title: t('checklist.patternLabel'),
+      key: 'item_name_pattern',
+      dataIndex: 'item_name_pattern',
+      render: (val: string) => <Typography.Text strong>{val}</Typography.Text>,
+    },
+    {
+      title: t('checklist.severityLabel'),
+      key: 'severity',
+      width: 180,
+      render: (_val: unknown, record: ReleaseChecklistRule) => (
+        <span className="revlog-inline-row">
+          {record.severity === 'blocking' ? (
+            <Tag color="error" icon={<LockOutlined aria-hidden="true" />}>
+              {t('checklist.severityBlocking')}
+            </Tag>
+          ) : (
+            <Tag color="warning" icon={<UnlockOutlined aria-hidden="true" />}>
+              {t('checklist.severityWarning')}
+            </Tag>
+          )}
+        </span>
+      ),
+    },
+    {
+      title: t('checklist.descriptionLabel'),
+      key: 'description',
+      dataIndex: 'description',
+      render: (val: string | null) => (
+        <Typography.Text type="secondary">{val || '—'}</Typography.Text>
+      ),
+    },
+    {
+      title: t('settings.membersColumns.actions'),
+      key: 'actions',
+      width: 140,
+      align: 'right' as const,
+      render: (_val: unknown, record: ReleaseChecklistRule) => (
+        <div className="revlog-inline-row" style={{ justifyContent: 'flex-end' }}>
+          {isOwner && (
+            <Tooltip
+              title={
+                record.severity === 'blocking'
+                  ? t('checklist.severityWarning')
+                  : t('checklist.severityBlocking')
+              }
+            >
+              <Button
+                size="small"
+                disabled={isMutatingRule || project.archived}
+                icon={
+                  record.severity === 'blocking' ? (
+                    <UnlockOutlined aria-hidden="true" />
+                  ) : (
+                    <LockOutlined aria-hidden="true" />
+                  )
+                }
+                onClick={() => void handleToggleSeverity(record)}
+                aria-label={t('checklist.severityLabel')}
+              />
+            </Tooltip>
+          )}
+          <Popconfirm
+            title={t('checklist.deleteConfirm', {
+              pattern: record.item_name_pattern,
+              category: record.category_name,
+            })}
+            onConfirm={() => void handleDeleteRule(record.id)}
+            okText={t('common.delete')}
+            cancelText={t('common.cancel')}
+            disabled={isMutatingRule || project.archived}
+          >
+            <Button
+              size="small"
+              danger
+              disabled={isMutatingRule || project.archived}
+              icon={<DeleteOutlined aria-hidden="true" />}
+              aria-label={t('common.delete')}
+            />
+          </Popconfirm>
+        </div>
+      ),
+    },
   ];
 
   return (
@@ -543,6 +746,149 @@ export const ProjectSettingsPage: React.FC = () => {
                             loading={isMutatingMember}
                           >
                             {t('settings.addMemberButton')}
+                          </Button>
+                        </Form.Item>
+                      </div>
+                    </Form>
+                  </Card>
+                )}
+              </div>
+            ),
+          },
+          {
+            key: 'checklist',
+            label: (
+              <span className="revlog-inline-row">
+                <CheckSquareOutlined aria-hidden="true" />
+                <span>{t('checklist.tabTitle')}</span>
+                <span className="revlog-count-pill">{checklistRules.length}</span>
+              </span>
+            ),
+            children: (
+              <div
+                style={{
+                  paddingTop: tokens.spacing.sm,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: tokens.spacing.lg,
+                }}
+              >
+                <div className="revlog-table-region" tabIndex={0}>
+                  <Table<ReleaseChecklistRule>
+                    rowKey="id"
+                    size="middle"
+                    columns={checklistColumns}
+                    dataSource={checklistRules}
+                    pagination={false}
+                    locale={{ emptyText: t('checklist.empty') }}
+                  />
+                </div>
+
+                {!project.archived && (
+                  <Card
+                    size="small"
+                    style={{
+                      backgroundColor: tokens.colors.surfaceSubtle,
+                      borderColor: tokens.colors.border,
+                    }}
+                  >
+                    <Typography.Title
+                      level={5}
+                      style={{ marginTop: 0, marginBottom: tokens.spacing.xs }}
+                    >
+                      {t('checklist.addRule')}
+                    </Typography.Title>
+                    <Typography.Paragraph
+                      type="secondary"
+                      style={{ marginBottom: tokens.spacing.md }}
+                    >
+                      {t('checklist.subtitle')} {!isOwner && `(${t('checklist.ownerOnlyNotice')})`}
+                    </Typography.Paragraph>
+
+                    <Form<ChecklistRuleFormValues>
+                      form={checklistForm}
+                      layout="vertical"
+                      requiredMark={false}
+                      validateTrigger="onBlur"
+                      initialValues={{ severity: 'warning' }}
+                      onFinish={handleAddRule}
+                    >
+                      <div className="revlog-inline-form-grid" style={{ maxWidth: 840 }}>
+                        <Form.Item
+                          label={t('checklist.categoryLabel')}
+                          name="category_name"
+                          htmlFor="rule-category"
+                          rules={[
+                            {
+                              required: true,
+                              whitespace: true,
+                              message: t('checklist.categoryRequired'),
+                            },
+                          ]}
+                        >
+                          <Input
+                            id="rule-category"
+                            placeholder={t('checklist.categoryPlaceholder')}
+                            maxLength={80}
+                          />
+                        </Form.Item>
+
+                        <Form.Item
+                          label={t('checklist.patternLabel')}
+                          name="item_name_pattern"
+                          htmlFor="rule-pattern"
+                          rules={[
+                            {
+                              required: true,
+                              whitespace: true,
+                              message: t('checklist.patternRequired'),
+                            },
+                          ]}
+                        >
+                          <Input
+                            id="rule-pattern"
+                            placeholder={t('checklist.patternPlaceholder')}
+                            maxLength={80}
+                          />
+                        </Form.Item>
+
+                        <Form.Item
+                          label={t('checklist.severityLabel')}
+                          name="severity"
+                        >
+                          <Radio.Group>
+                            <Radio value="warning">{t('checklist.severityWarning')}</Radio>
+                            <Radio value="blocking" disabled={!isOwner}>
+                              {t('checklist.severityBlocking')}
+                            </Radio>
+                          </Radio.Group>
+                        </Form.Item>
+
+                        <Form.Item
+                          label={t('checklist.descriptionLabel')}
+                          name="description"
+                          htmlFor="rule-description"
+                          style={{ gridColumn: 'span 2' }}
+                        >
+                          <Input
+                            id="rule-description"
+                            placeholder={t('checklist.descriptionPlaceholder')}
+                            maxLength={250}
+                          />
+                        </Form.Item>
+
+                        <Form.Item
+                          className="revlog-submit-item"
+                          label={<span aria-hidden="true">&nbsp;</span>}
+                          colon={false}
+                        >
+                          <Button
+                            type="primary"
+                            htmlType="submit"
+                            icon={<PlusOutlined aria-hidden="true" />}
+                            loading={isMutatingRule}
+                          >
+                            {t('checklist.addRule')}
                           </Button>
                         </Form.Item>
                       </div>

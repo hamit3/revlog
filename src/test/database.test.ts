@@ -20,6 +20,7 @@ import type {
   ProjectReleaseProduct,
   PublicSharedRelease,
   Release,
+  ReleaseChecklistRule,
   ReleaseItem,
   ReleaseShareLink,
 } from '../types/database';
@@ -924,5 +925,89 @@ describe('Database migrations, products, product & project releases, immutabilit
         [creationLogs[0]!.id],
       ),
     ).rejects.toThrow(/Audit logs are strictly append-only/);
+  });
+
+  it('enforces RLS and owner-only escalation on release checklist rules', async () => {
+    // 1. Owner creates a warning rule and a blocking rule
+    const ownerWarningRule = await ctx.asUser<ReleaseChecklistRule>(
+      OWNER_ID,
+      `insert into public.release_checklist_rules (project_id, category_name, item_name_pattern, severity, description)
+       values ($1, 'Hardware', 'Gerber', 'warning', 'Fabrication archive') returning *`,
+      [SEED_PROJECT_ID],
+    );
+    expect(ownerWarningRule).toHaveLength(1);
+    expect(ownerWarningRule[0]!.severity).toBe('warning');
+
+    const ownerBlockingRule = await ctx.asUser<ReleaseChecklistRule>(
+      OWNER_ID,
+      `insert into public.release_checklist_rules (project_id, category_name, item_name_pattern, severity, description)
+       values ($1, 'Hardware', 'BOM', 'blocking', 'Mandatory bill of materials') returning *`,
+      [SEED_PROJECT_ID],
+    );
+    expect(ownerBlockingRule).toHaveLength(1);
+    expect(ownerBlockingRule[0]!.severity).toBe('blocking');
+
+    // 2. Member can create a warning rule
+    const memberWarningRule = await ctx.asUser<ReleaseChecklistRule>(
+      MEMBER_ID,
+      `insert into public.release_checklist_rules (project_id, category_name, item_name_pattern, severity, description)
+       values ($1, 'Test', 'report', 'warning', 'Test summary') returning *`,
+      [SEED_PROJECT_ID],
+    );
+    expect(memberWarningRule).toHaveLength(1);
+
+    // 3. Member CANNOT create a blocking rule (only owner can make a rule blocking)
+    await expect(
+      ctx.asUser(
+        MEMBER_ID,
+        `insert into public.release_checklist_rules (project_id, category_name, item_name_pattern, severity)
+         values ($1, 'Hardware', 'Schematic', 'blocking')`,
+        [SEED_PROJECT_ID],
+      ),
+    ).rejects.toThrow();
+
+    // 4. Member CANNOT escalate a warning rule to blocking
+    await expect(
+      ctx.asUser(
+        MEMBER_ID,
+        `update public.release_checklist_rules set severity = 'blocking' where id = $1`,
+        [memberWarningRule[0]!.id],
+      ),
+    ).rejects.toThrow();
+
+    // 5. Owner can toggle severity to blocking
+    const escalatedRule = await ctx.asUser<ReleaseChecklistRule>(
+      OWNER_ID,
+      `update public.release_checklist_rules set severity = 'blocking' where id = $1 returning *`,
+      [memberWarningRule[0]!.id],
+    );
+    expect(escalatedRule).toHaveLength(1);
+    expect(escalatedRule[0]!.severity).toBe('blocking');
+
+    // 6. Viewer CANNOT insert, update, or delete rules
+    await expect(
+      ctx.asUser(
+        VIEWER_ID,
+        `insert into public.release_checklist_rules (project_id, category_name, item_name_pattern)
+         values ($1, 'Hardware', 'Any')`,
+        [SEED_PROJECT_ID],
+      ),
+    ).rejects.toThrow();
+
+    // 7. Outsider cannot see rules
+    const outsiderRules = await ctx.asUser(
+      OUTSIDER_ID,
+      `select * from public.release_checklist_rules where project_id = $1`,
+      [SEED_PROJECT_ID],
+    );
+    expect(outsiderRules).toHaveLength(0);
+
+    // 8. Delete rule succeeds for member
+    const deleted = await ctx.asUser<ReleaseChecklistRule>(
+      MEMBER_ID,
+      `delete from public.release_checklist_rules where id = $1 returning *`,
+      [ownerWarningRule[0]!.id],
+    );
+    expect(deleted).toHaveLength(1);
   });
 });

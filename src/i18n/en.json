@@ -403,7 +403,15 @@
     "downloadPackageSuccess": "Release package zip downloaded.",
     "downloadPackageError": "Failed to create release package.",
     "packagingProgress": "Packaging files ({{current}}/{{total}})...",
-    "manifestMismatchError": "Manifest hash verification failed. The release package was aborted."
+    "manifestMismatchError": "Manifest hash verification failed. The release package was aborted.",
+    "completenessCardHeading": "Release completeness checklist",
+    "completenessAllPassed": "All required checklist items present ({{count}}/{{count}}).",
+    "completenessNoRules": "No checklist rules configured for this project.",
+    "completenessMissingHeading": "Missing checklist items",
+    "completenessBlockingAlert": "Release publishing is blocked. Missing required items must be selected before publishing.",
+    "completenessWarningNotice": "{{count}} optional checklist item(s) are missing.",
+    "completenessSatisfied": "Satisfied by {{item}}",
+    "completenessMissing": "Missing"
   },
   "share": {
     "button": "Share link",
@@ -439,6 +447,31 @@
     "backHome": "Go to RevLog",
     "downloadAllPackage": "Download package",
     "expiresBadge": "Expires in {{days}} day(s)"
+  },
+  "checklist": {
+    "tabTitle": "Checklist",
+    "heading": "Release checklist rules",
+    "subtitle": "Configure required release artifacts and rules for this project.",
+    "addRule": "Add requirement",
+    "categoryLabel": "Module",
+    "categoryPlaceholder": "Hardware",
+    "categoryRequired": "Enter or select a module name.",
+    "patternLabel": "Required item name or keyword",
+    "patternPlaceholder": "BOM, PnP, Gerber, test report",
+    "patternRequired": "Enter a required keyword or artifact name.",
+    "severityLabel": "Requirement level",
+    "severityWarning": "Warning (non-blocking)",
+    "severityBlocking": "Blocking",
+    "severityWarningHint": "Warns during release review if missing, but does not block publishing.",
+    "severityBlockingHint": "Blocks publishing until this required item is selected.",
+    "descriptionLabel": "Note or instruction",
+    "descriptionPlaceholder": "Must include pick-and-place centroid coordinates",
+    "ownerOnlyNotice": "Only project owners can configure blocking requirements.",
+    "ruleCreated": "Checklist requirement added.",
+    "ruleUpdated": "Checklist requirement updated.",
+    "ruleDeleted": "Checklist requirement deleted.",
+    "deleteConfirm": "Delete requirement \"{{pattern}}\" in module \"{{category}}\"?",
+    "empty": "No completeness checklist rules configured for this project yet."
   },
   "projectReleases": {
     "historyTitle": "Project releases",

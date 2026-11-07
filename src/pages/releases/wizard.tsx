@@ -24,6 +24,7 @@ import {
   ArrowLeftOutlined,
   ArrowRightOutlined,
   CheckCircleOutlined,
+  CheckSquareOutlined,
   DeleteOutlined,
   ExclamationCircleOutlined,
   FileOutlined,
@@ -38,8 +39,9 @@ import { StatusBadge } from '../../components/StatusBadge';
 import { useProductAccess } from '../../lib/useProjectAccess';
 import { formatFileSize, formatReleaseDate } from '../../lib/format';
 import { computeReleaseWarnings, suggestInitialItemIds } from '../../lib/releaseHelpers';
+import { evaluateReleaseCompleteness } from '../../lib/completeness';
 import { supabaseClient } from '../../providers/supabaseClient';
-import type { BomPnpCheckRun, Category, Item, Release } from '../../types/database';
+import type { BomPnpCheckRun, Category, Item, Release, ReleaseChecklistRule } from '../../types/database';
 
 interface StepOneFormValues {
   version_label: string;
@@ -77,6 +79,7 @@ export const ReleaseWizardPage: React.FC = () => {
   const [draftRelease, setDraftRelease] = useState<Release | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [items, setItems] = useState<Item[]>([]);
+  const [checklistRules, setChecklistRules] = useState<ReleaseChecklistRule[]>([]);
   const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
 
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -125,7 +128,7 @@ export const ReleaseWizardPage: React.FC = () => {
       setIsLoading(true);
       setErrorMessage(null);
 
-      const [catRes, itemRes] = await Promise.all([
+      const [catRes, itemRes, rulesRes] = await Promise.all([
         supabaseClient
           .from('categories')
           .select('*')
@@ -139,22 +142,35 @@ export const ReleaseWizardPage: React.FC = () => {
           .eq('product_id', productId)
           .eq('archived', false)
           .order('created_at', { ascending: false }),
+        supabaseClient
+          .from('release_checklist_rules')
+          .select('*')
+          .eq('project_id', projectId)
+          .order('position', { ascending: true })
+          .order('created_at', { ascending: true }),
       ]);
 
       if (!active) {
         return;
       }
 
-      if (catRes.error || itemRes.error) {
-        setErrorMessage(catRes.error?.message ?? itemRes.error?.message ?? t('common.errorPrefix'));
+      if (catRes.error || itemRes.error || rulesRes.error) {
+        setErrorMessage(
+          catRes.error?.message ??
+            itemRes.error?.message ??
+            rulesRes.error?.message ??
+            t('common.errorPrefix'),
+        );
         setIsLoading(false);
         return;
       }
 
       const loadedCategories = (catRes.data as Category[]) ?? [];
       const loadedItems = (itemRes.data as Item[]) ?? [];
+      const loadedRules = (rulesRes.data as ReleaseChecklistRule[]) ?? [];
       setCategories(loadedCategories);
       setItems(loadedItems);
+      setChecklistRules(loadedRules);
 
       if (releaseId) {
         const [relRes, relItemsRes] = await Promise.all([
@@ -373,6 +389,10 @@ export const ReleaseWizardPage: React.FC = () => {
       setErrorMessage(t('releases.reviewNoItemsError'));
       return;
     }
+    if (!completenessEvaluation.canPublish) {
+      setErrorMessage(t('releases.completenessBlockingAlert'));
+      return;
+    }
 
     setIsSaving(true);
     setErrorMessage(null);
@@ -425,6 +445,12 @@ export const ReleaseWizardPage: React.FC = () => {
   const warnings = useMemo(
     () => computeReleaseWarnings(categories, selectedItems),
     [categories, selectedItems],
+  );
+
+  const completenessEvaluation = evaluateReleaseCompleteness(
+    checklistRules,
+    categories,
+    selectedItems,
   );
 
   const categoryNameById = useMemo(() => {
@@ -967,6 +993,136 @@ export const ReleaseWizardPage: React.FC = () => {
             )}
           </Card>
 
+          {/* Completeness checklist */}
+          <Card
+            title={
+              <span className="revlog-inline-row">
+                <CheckSquareOutlined aria-hidden="true" />
+                <span>{t('releases.completenessCardHeading')}</span>
+                {checklistRules.length > 0 && (
+                  <span className="revlog-count-pill">{checklistRules.length}</span>
+                )}
+              </span>
+            }
+            style={{ marginBottom: tokens.spacing.lg }}
+          >
+            {checklistRules.length === 0 ? (
+              <Typography.Text type="secondary">
+                {t('releases.completenessNoRules')}
+              </Typography.Text>
+            ) : (
+              <div>
+                {completenessEvaluation.blockingMissingCount > 0 ? (
+                  <Alert
+                    type="error"
+                    showIcon
+                    icon={<LockOutlined aria-hidden="true" />}
+                    message={t('releases.completenessBlockingAlert')}
+                    style={{ marginBottom: tokens.spacing.md }}
+                  />
+                ) : completenessEvaluation.warningMissingCount > 0 ? (
+                  <Alert
+                    type="warning"
+                    showIcon
+                    icon={<ExclamationCircleOutlined aria-hidden="true" />}
+                    message={t('releases.completenessWarningNotice', {
+                      count: completenessEvaluation.warningMissingCount,
+                    })}
+                    style={{ marginBottom: tokens.spacing.md }}
+                  />
+                ) : (
+                  <Alert
+                    type="success"
+                    showIcon
+                    icon={<CheckCircleOutlined aria-hidden="true" />}
+                    message={t('releases.completenessAllPassed', {
+                      count: checklistRules.length,
+                    })}
+                    style={{ marginBottom: tokens.spacing.md }}
+                  />
+                )}
+
+                <div className="revlog-table-region" tabIndex={0}>
+                  <Table
+                    rowKey={(r) => r.rule.id}
+                    size="small"
+                    pagination={false}
+                    dataSource={completenessEvaluation.results}
+                    columns={[
+                      {
+                        title: t('checklist.categoryLabel'),
+                        key: 'category',
+                        width: 140,
+                        render: (_val, record) => <Tag bordered>{record.rule.category_name}</Tag>,
+                      },
+                      {
+                        title: t('checklist.patternLabel'),
+                        key: 'pattern',
+                        render: (_val, record) => (
+                          <div>
+                            <Typography.Text strong>{record.rule.item_name_pattern}</Typography.Text>
+                            {record.rule.description && (
+                              <Typography.Text
+                                type="secondary"
+                                style={{ display: 'block' }}
+                              >
+                                {record.rule.description}
+                              </Typography.Text>
+                            )}
+                          </div>
+                        ),
+                      },
+                      {
+                        title: t('checklist.severityLabel'),
+                        key: 'severity',
+                        width: 140,
+                        render: (_val, record) =>
+                          record.rule.severity === 'blocking' ? (
+                            <Tag color="error" icon={<LockOutlined aria-hidden="true" />}>
+                              {t('checklist.severityBlocking')}
+                            </Tag>
+                          ) : (
+                            <Tag color="warning">
+                              {t('checklist.severityWarning')}
+                            </Tag>
+                          ),
+                      },
+                      {
+                        title: t('common.status'),
+                        key: 'status',
+                        width: 240,
+                        render: (_val, record) =>
+                          record.satisfied ? (
+                            <Tag
+                              color="success"
+                              icon={<CheckCircleOutlined aria-hidden="true" />}
+                            >
+                              {t('releases.completenessSatisfied', {
+                                item: record.matchedItem?.title || record.matchedItem?.file_name || '',
+                              })}
+                            </Tag>
+                          ) : (
+                            <Tag
+                              color={record.rule.severity === 'blocking' ? 'error' : 'warning'}
+                              icon={
+                                record.rule.severity === 'blocking' ? (
+                                  <LockOutlined aria-hidden="true" />
+                                ) : (
+                                  <ExclamationCircleOutlined aria-hidden="true" />
+                                )
+                              }
+                            >
+                              {t('releases.completenessMissing')}
+                            </Tag>
+                          ),
+                      },
+                    ]}
+                  />
+                </div>
+              </div>
+            )}
+          </Card>
+
           <Card
             title={t('releases.reviewSelectedHeading', {
               count: selectedItems.length,
@@ -1000,7 +1156,7 @@ export const ReleaseWizardPage: React.FC = () => {
               type="primary"
               icon={<ArrowRightOutlined aria-hidden="true" />}
               iconPosition="end"
-              disabled={selectedItems.length === 0}
+              disabled={selectedItems.length === 0 || !completenessEvaluation.canPublish}
               onClick={() => goToStep(3)}
             >
               {t('common.next')}
@@ -1054,6 +1210,16 @@ export const ReleaseWizardPage: React.FC = () => {
             ]}
           />
 
+          {!completenessEvaluation.canPublish && (
+            <Alert
+              type="error"
+              showIcon
+              icon={<LockOutlined aria-hidden="true" />}
+              message={t('releases.completenessBlockingAlert')}
+              style={{ marginBottom: tokens.spacing.lg }}
+            />
+          )}
+
           <Alert
             type="warning"
             showIcon
@@ -1074,7 +1240,7 @@ export const ReleaseWizardPage: React.FC = () => {
               type="primary"
               icon={<LockOutlined aria-hidden="true" />}
               loading={isSaving}
-              disabled={selectedItems.length === 0}
+              disabled={selectedItems.length === 0 || !completenessEvaluation.canPublish}
               onClick={() => void handlePublish()}
             >
               {t('releases.publishButton')}

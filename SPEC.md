@@ -47,7 +47,7 @@ The MVP (auth, projects, categories, items, release wizard, release history, rel
   - Links are random, unguessable tokens; store only a hash of the token.
   - Log the creation and revocation of links.
 
-- [ ] 5. **Completeness checklist**
+- [x] 5. **Completeness checklist**
   - Per-project setting (project settings page): required items for a release, for example "Hardware: BOM, PnP, Gerber; Test: test report".
   - The release wizard "Review" step shows which required items are missing.
   - Default is a warning; the owner can make a rule blocking.

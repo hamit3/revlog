@@ -52,6 +52,10 @@ describe('Supabase-style scoped navigationConfig and header switcher helpers', (
       selectedKeys: ['project-new-release'],
       openKeys: [],
     });
+    expect(resolveActiveNavKeys(projectSections, '/projects/proj-1/bom-pnp')).toEqual({
+      selectedKeys: ['project-bom-pnp'],
+      openKeys: [],
+    });
     expect(resolveActiveNavKeys(projectSections, '/projects/proj-1/settings')).toEqual({
       selectedKeys: ['project-settings'],
       openKeys: [],
@@ -89,6 +93,12 @@ describe('Supabase-style scoped navigationConfig and header switcher helpers', (
       openKeys: [],
     });
     expect(
+      resolveActiveNavKeys(productSections, '/projects/proj-1/products/prod-a/bom-pnp'),
+    ).toEqual({
+      selectedKeys: ['product-bom-pnp'],
+      openKeys: [],
+    });
+    expect(
       resolveActiveNavKeys(productSections, '/projects/proj-1/products/prod-a/settings'),
     ).toEqual({
       selectedKeys: ['product-settings'],
@@ -103,10 +113,16 @@ describe('Supabase-style scoped navigationConfig and header switcher helpers', (
     expect(resolveSwitchedProjectPath('/projects/p1/releases', 'p1', 'p2')).toBe(
       '/projects/p2/releases',
     );
+    expect(resolveSwitchedProjectPath('/projects/p1/bom-pnp', 'p1', 'p2')).toBe(
+      '/projects/p2/bom-pnp',
+    );
     expect(resolveSwitchedProjectPath('/projects/p1/products/a1', 'p1', 'p2')).toBe('/projects/p2');
 
     expect(resolveSwitchedProductPath('/projects/p1/products/a1/releases', 'p1', 'a1', 'b2')).toBe(
       '/projects/p1/products/b2/releases',
+    );
+    expect(resolveSwitchedProductPath('/projects/p1/products/a1/bom-pnp', 'p1', 'a1', 'b2')).toBe(
+      '/projects/p1/products/b2/bom-pnp',
     );
     expect(resolveSwitchedProductPath('/projects/p1/products/a1/settings', 'p1', 'a1', 'b2')).toBe(
       '/projects/p1/products/b2/settings',
@@ -124,6 +140,17 @@ describe('Supabase-style scoped navigationConfig and header switcher helpers', (
     expect(
       resolveHeaderTrailingSection('/projects/p1/settings', 'p1', undefined, translateText)?.label,
     ).toBe('Project settings');
+    expect(
+      resolveHeaderTrailingSection('/projects/p1/bom-pnp', 'p1', undefined, translateText)?.label,
+    ).toBe('BOM & PnP');
+    expect(
+      resolveHeaderTrailingSection(
+        '/projects/p1/products/a1/bom-pnp',
+        'p1',
+        'a1',
+        translateText,
+      )?.label,
+    ).toBe('BOM & PnP');
     expect(
       resolveHeaderTrailingSection(
         '/projects/p1/products/a1/releases/rel-1',

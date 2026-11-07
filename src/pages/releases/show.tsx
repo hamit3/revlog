@@ -21,6 +21,7 @@ import {
   DownloadOutlined,
   ExclamationCircleOutlined,
   FileOutlined,
+  FileSearchOutlined,
   HistoryOutlined,
   LinkOutlined,
 } from '@ant-design/icons';
@@ -33,7 +34,7 @@ import { computeManifestHash } from '../../lib/manifestHash';
 import { groupReleaseItemsByCategory } from '../../lib/releaseHelpers';
 import { triggerSignedFileDownload } from '../../lib/storage';
 import { supabaseClient } from '../../providers/supabaseClient';
-import type { Release, ReleaseItem } from '../../types/database';
+import type { BomPnpCheckRun, Release, ReleaseItem } from '../../types/database';
 
 export const ReleaseShowPage: React.FC = () => {
   const t = useTranslate();
@@ -53,6 +54,7 @@ export const ReleaseShowPage: React.FC = () => {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const [bomPnpRun, setBomPnpRun] = useState<BomPnpCheckRun | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -63,7 +65,7 @@ export const ReleaseShowPage: React.FC = () => {
       setIsLoading(true);
       setErrorMessage(null);
 
-      const [relRes, itemsRes] = await Promise.all([
+      const [relRes, itemsRes, checkRunRes] = await Promise.all([
         supabaseClient
           .from('releases')
           .select('*, profiles:published_by(id, full_name, email, created_at)')
@@ -72,6 +74,13 @@ export const ReleaseShowPage: React.FC = () => {
           .eq('product_id', productId)
           .maybeSingle(),
         supabaseClient.from('release_items').select('*').eq('release_id', releaseId),
+        supabaseClient
+          .from('bom_pnp_check_runs')
+          .select('*')
+          .eq('release_id', releaseId)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
       ]);
 
       if (!active) {
@@ -87,6 +96,12 @@ export const ReleaseShowPage: React.FC = () => {
       const loadedRelease = relRes.data as Release;
       const loadedItems = (itemsRes.data as ReleaseItem[]) ?? [];
       setRelease(loadedRelease);
+      setReleaseItems(loadedItems);
+      if (checkRunRes.data) {
+        setBomPnpRun(checkRunRes.data as BomPnpCheckRun);
+      } else {
+        setBomPnpRun(null);
+      }
       setReleaseItems(loadedItems);
 
       if (loadedRelease.status === 'published' && loadedRelease.manifest_hash) {
@@ -454,6 +469,87 @@ export const ReleaseShowPage: React.FC = () => {
           ]}
         />
       </Card>
+
+      {bomPnpRun && (
+        <Card
+          title={t('releases.bomPnpCardHeading')}
+          style={{ marginBottom: tokens.spacing.lg }}
+          extra={
+            <Button
+              size="small"
+              icon={<FileSearchOutlined aria-hidden="true" />}
+              onClick={() =>
+                navigate(
+                  `/projects/${projectId}/products/${productId}/bom-pnp?releaseId=${release.id}`,
+                )
+              }
+            >
+              {t('releases.bomPnpViewButton')}
+            </Button>
+          }
+        >
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: tokens.spacing.sm,
+            }}
+          >
+            {bomPnpRun.summary.error_count === 0 && bomPnpRun.summary.warning_count === 0 ? (
+              <Tag
+                bordered
+                style={{
+                  backgroundColor: tokens.colors.publishedBg,
+                  borderColor: tokens.colors.publishedBorder,
+                  color: tokens.colors.publishedText,
+                }}
+              >
+                <CheckCircleOutlined aria-hidden="true" style={{ marginInlineEnd: 4 }} />
+                {t('releases.bomPnpCheckPassed')}
+              </Tag>
+            ) : (
+              <Tag
+                bordered
+                style={{
+                  backgroundColor:
+                    bomPnpRun.summary.error_count > 0
+                      ? tokens.colors.errorBg
+                      : tokens.colors.warningBg,
+                  borderColor:
+                    bomPnpRun.summary.error_count > 0
+                      ? tokens.colors.errorBorder
+                      : tokens.colors.warningBorder,
+                  color:
+                    bomPnpRun.summary.error_count > 0
+                      ? tokens.colors.errorText
+                      : tokens.colors.warningText,
+                }}
+              >
+                <ExclamationCircleOutlined aria-hidden="true" style={{ marginInlineEnd: 4 }} />
+                {t('releases.bomPnpCheckIssues', {
+                  errors: bomPnpRun.summary.error_count,
+                  warnings: bomPnpRun.summary.warning_count,
+                })}
+              </Tag>
+            )}
+            <Tag bordered>
+              {t('bomPnp.summaryBomCount', { count: bomPnpRun.summary.bom_component_count })}
+            </Tag>
+            <Tag bordered>
+              {t('bomPnp.summaryPnpCount', { count: bomPnpRun.summary.pnp_row_count })}
+            </Tag>
+            {(bomPnpRun.bom_file_name || bomPnpRun.pnp_file_name) && (
+              <Typography.Text type="secondary">
+                {t('releases.bomPnpCheckedFiles', {
+                  bom: bomPnpRun.bom_file_name || '-',
+                  pnp: bomPnpRun.pnp_file_name || '-',
+                })}
+              </Typography.Text>
+            )}
+          </div>
+        </Card>
+      )}
 
       {/* Release Contents Grouped by Module */}
       <Typography.Title level={2} style={{ marginBottom: tokens.spacing.md }}>

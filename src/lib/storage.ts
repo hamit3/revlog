@@ -121,6 +121,18 @@ export async function uploadProjectFileWithProgress({
   };
 }
 
+export async function downloadProjectFileText(storagePath: string): Promise<string> {
+  const { data, error } = await supabaseClient.storage
+    .from(PROJECT_FILES_BUCKET)
+    .download(storagePath);
+
+  if (error || !data) {
+    throw new Error(error?.message ?? 'Could not download file from storage.');
+  }
+
+  return data.text();
+}
+
 export async function createShortLivedDownloadUrl(
   storagePath: string,
   downloadFileName?: string | null,

@@ -133,3 +133,114 @@ export interface ProjectReleaseProduct {
   release_published_at: string | null;
   created_at: string;
 }
+
+export type BomPnpSeverity = 'error' | 'warning' | 'info';
+export type BomPnpFormat = 'kicad' | 'altium' | 'generic' | 'unrecognized';
+export type BomPnpFindingCode =
+  | 'missing_mpn'
+  | 'duplicate_bom_designator'
+  | 'empty_value'
+  | 'empty_footprint'
+  | 'dnp_entry'
+  | 'missing_in_pnp'
+  | 'extra_in_pnp'
+  | 'dnp_present_in_pnp'
+  | 'duplicate_pnp_designator'
+  | 'side_mismatch'
+  | 'rotation_anomaly';
+export type BomBoardSide = 'top' | 'bottom' | 'unknown';
+
+export interface BomColumnMapping {
+  designators: string | null;
+  mpn?: string | null;
+  value?: string | null;
+  footprint?: string | null;
+  dnp?: string | null;
+  dnpPolarity?: 'dnp' | 'fitted';
+  quantity?: string | null;
+  manufacturer?: string | null;
+  side?: string | null;
+}
+
+export interface PnpColumnMapping {
+  designator: string | null;
+  value?: string | null;
+  footprint?: string | null;
+  x?: string | null;
+  y?: string | null;
+  rotation?: string | null;
+  side?: string | null;
+}
+
+export interface BomPnpColumnMapping {
+  bom?: BomColumnMapping | null;
+  pnp?: PnpColumnMapping | null;
+}
+
+export interface ParsedBomRow {
+  rowNumber: number;
+  rawDesignators: string;
+  designators: string[];
+  mpn: string;
+  value: string;
+  footprint: string;
+  quantity: number | null;
+  manufacturer: string;
+  dnp: boolean;
+  side: BomBoardSide | null;
+}
+
+export interface ParsedPnpRow {
+  rowNumber: number;
+  designator: string;
+  value: string;
+  footprint: string;
+  x: number | null;
+  y: number | null;
+  rawRotation: string;
+  rotation: number | null;
+  rawSide: string;
+  side: BomBoardSide;
+}
+
+export interface BomPnpFinding {
+  id: string;
+  code: BomPnpFindingCode;
+  severity: BomPnpSeverity;
+  source: 'bom' | 'pnp' | 'cross';
+  designators: string[];
+  affectedBomRows: number[];
+  affectedPnpRows: number[];
+  message: string;
+}
+
+export interface BomPnpSummary {
+  error_count: number;
+  warning_count: number;
+  info_count: number;
+  bom_row_count: number;
+  bom_component_count: number;
+  bom_dnp_count: number;
+  pnp_row_count: number;
+}
+
+export interface BomPnpCheckRun {
+  id: string;
+  project_id: string;
+  product_id: string;
+  release_id: string;
+  bom_item_id: string | null;
+  pnp_item_id: string | null;
+  bom_file_name: string | null;
+  bom_sha256: string | null;
+  pnp_file_name: string | null;
+  pnp_sha256: string | null;
+  column_mapping: BomPnpColumnMapping;
+  parsed_bom: ParsedBomRow[];
+  parsed_pnp: ParsedPnpRow[];
+  findings: BomPnpFinding[];
+  summary: BomPnpSummary;
+  created_by: string;
+  created_at: string;
+  profiles?: Profile | null;
+}

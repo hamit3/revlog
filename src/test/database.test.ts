@@ -7,6 +7,7 @@ import {
 } from '../lib/manifestHash';
 import { sha256HexFromBytes, sha256HexFromFile, sha256HexFromString } from '../lib/sha256';
 import type {
+  BomPnpCheckRun,
   Product,
   ProjectRelease,
   ProjectReleaseProduct,
@@ -447,5 +448,311 @@ describe('Database migrations, products, product & project releases, immutabilit
     await ctx.asUser(OWNER_ID, `update public.products set archived = false where id = $1`, [
       SEED_PRODUCT_SENSOR_ID,
     ]);
+  });
+
+  it('enforces RLS, archive guards, cross-product integrity, and published immutability on bom_pnp_check_runs', async () => {
+    const draftRows = await ctx.asUser<Release>(
+      MEMBER_ID,
+      `insert into public.releases (project_id, product_id, version_label, notes)
+       values ($1, $2, 'Rev C-BOM-Check', 'Draft for BOM/PnP check verification')
+       returning *`,
+      [SEED_PROJECT_ID, SEED_PRODUCT_SENSOR_ID],
+    );
+    const draftReleaseId = draftRows[0]!.id;
+
+    await ctx.asUser(
+      MEMBER_ID,
+      `insert into public.release_items (release_id, item_id) values ($1, $2)`,
+      [draftReleaseId, SEED_BOM_ITEM_ID],
+    );
+
+    const sampleSummary = JSON.stringify({
+      error_count: 1,
+      warning_count: 1,
+      info_count: 0,
+      bom_row_count: 2,
+      bom_component_count: 3,
+      bom_dnp_count: 0,
+      pnp_row_count: 2,
+    });
+
+    const firstRunRows = await ctx.asUser<BomPnpCheckRun>(
+      MEMBER_ID,
+      `insert into public.bom_pnp_check_runs (
+         project_id, product_id, release_id, bom_item_id, bom_file_name, bom_sha256,
+         pnp_file_name, pnp_sha256, summary, created_by
+       )
+       values ($1, $2, $3, $4, 'bom-rev-c.csv', $5, 'pnp-rev-c.pos', $5, $6::jsonb, $7)
+       returning *`,
+      [
+        SEED_PROJECT_ID,
+        SEED_PRODUCT_SENSOR_ID,
+        draftReleaseId,
+        SEED_BOM_ITEM_ID,
+        'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+        sampleSummary,
+        MEMBER_ID,
+      ],
+    );
+    expect(firstRunRows).toHaveLength(1);
+    const firstRunId = firstRunRows[0]!.id;
+
+    // Owner inserts a second newer check run on the same draft release
+    const secondRunRows = await ctx.asUser<BomPnpCheckRun>(
+      OWNER_ID,
+      `insert into public.bom_pnp_check_runs (
+         project_id, product_id, release_id, bom_item_id, bom_file_name, summary, created_by
+       )
+       values ($1, $2, $3, $4, 'bom-rev-c-fixed.csv', $5::jsonb, $6)
+       returning *`,
+      [
+        SEED_PROJECT_ID,
+        SEED_PRODUCT_SENSOR_ID,
+        draftReleaseId,
+        SEED_BOM_ITEM_ID,
+        JSON.stringify({
+          error_count: 0,
+          warning_count: 0,
+          info_count: 1,
+          bom_row_count: 2,
+          bom_component_count: 3,
+          bom_dnp_count: 1,
+          pnp_row_count: 2,
+        }),
+        OWNER_ID,
+      ],
+    );
+    const secondRunId = secondRunRows[0]!.id;
+
+    // Viewer can read check runs; Outsider sees 0 rows
+    const viewerRuns = await ctx.asUser<BomPnpCheckRun>(
+      VIEWER_ID,
+      `select * from public.bom_pnp_check_runs where release_id = $1 order by created_at desc`,
+      [draftReleaseId],
+    );
+    expect(viewerRuns).toHaveLength(2);
+
+    const outsiderRuns = await ctx.asUser<BomPnpCheckRun>(
+      OUTSIDER_ID,
+      `select * from public.bom_pnp_check_runs where release_id = $1`,
+      [draftReleaseId],
+    );
+    expect(outsiderRuns).toHaveLength(0);
+
+    // Viewer and Outsider cannot insert or delete check runs
+    await expect(
+      ctx.asUser(
+        VIEWER_ID,
+        `insert into public.bom_pnp_check_runs (project_id, product_id, release_id, bom_file_name, created_by)
+         values ($1, $2, $3, 'unauth.csv', $4)`,
+        [SEED_PROJECT_ID, SEED_PRODUCT_SENSOR_ID, draftReleaseId, VIEWER_ID],
+      ),
+    ).rejects.toThrow(/row-level security/);
+
+    await expect(
+      ctx.asUser(
+        OUTSIDER_ID,
+        `insert into public.bom_pnp_check_runs (project_id, product_id, release_id, bom_file_name, created_by)
+         values ($1, $2, $3, 'outsider.csv', $4)`,
+        [SEED_PROJECT_ID, SEED_PRODUCT_SENSOR_ID, draftReleaseId, OUTSIDER_ID],
+      ),
+    ).rejects.toThrow(/row-level security/);
+
+    const viewerDeleted = await ctx.asUser(
+      VIEWER_ID,
+      `delete from public.bom_pnp_check_runs where id = $1 returning id`,
+      [firstRunId],
+    );
+    expect(viewerDeleted).toHaveLength(0);
+
+    // Cross-product item reference is rejected by trigger
+    await expect(
+      ctx.asUser(
+        MEMBER_ID,
+        `insert into public.bom_pnp_check_runs (
+           project_id, product_id, release_id, bom_item_id, bom_file_name, created_by
+         )
+         values ($1, $2, $3, 'cccccccc-cccc-4ccc-8ccc-ccccccccccc4', 'wrong-product.csv', $4)`,
+        [SEED_PROJECT_ID, SEED_PRODUCT_SENSOR_ID, draftReleaseId, MEMBER_ID],
+      ),
+    ).rejects.toThrow(/BOM item does not belong to the release product/);
+
+    // Direct execution of trigger-only security definer function is denied to authenticated role
+    await expect(
+      ctx.asUser(MEMBER_ID, `select public.enforce_bom_pnp_check_runs_immutability()`),
+    ).rejects.toThrow(/permission denied for function enforce_bom_pnp_check_runs_immutability/);
+
+    // UPDATE is always rejected even on draft check runs (both authenticated and superuser)
+    await expect(
+      ctx.asUser(
+        MEMBER_ID,
+        `update public.bom_pnp_check_runs set bom_file_name = 'mutated.csv' where id = $1`,
+        [firstRunId],
+      ),
+    ).rejects.toThrow();
+
+    await expect(
+      ctx.asSuperuser(
+        `update public.bom_pnp_check_runs set bom_file_name = 'mutated.csv' where id = $1`,
+        [firstRunId],
+      ),
+    ).rejects.toThrow(/Stored BOM\/PnP check runs are immutable/);
+
+    // Archived product blocks INSERT and DELETE on bom_pnp_check_runs
+    await ctx.asUser(OWNER_ID, `update public.products set archived = true where id = $1`, [
+      SEED_PRODUCT_SENSOR_ID,
+    ]);
+
+    await expect(
+      ctx.asUser(
+        MEMBER_ID,
+        `insert into public.bom_pnp_check_runs (project_id, product_id, release_id, bom_file_name, created_by)
+         values ($1, $2, $3, 'archived-prod.csv', $4)`,
+        [SEED_PROJECT_ID, SEED_PRODUCT_SENSOR_ID, draftReleaseId, MEMBER_ID],
+      ),
+    ).rejects.toThrow(/row-level security/);
+
+    const deletedWhileProdArchived = await ctx.asUser(
+      MEMBER_ID,
+      `delete from public.bom_pnp_check_runs where id = $1 returning id`,
+      [firstRunId],
+    );
+    expect(deletedWhileProdArchived).toHaveLength(0);
+
+    await ctx.asUser(OWNER_ID, `update public.products set archived = false where id = $1`, [
+      SEED_PRODUCT_SENSOR_ID,
+    ]);
+
+    // Archived project blocks INSERT and DELETE on bom_pnp_check_runs
+    await ctx.asUser(OWNER_ID, `update public.projects set archived = true where id = $1`, [
+      SEED_PROJECT_ID,
+    ]);
+
+    await expect(
+      ctx.asUser(
+        MEMBER_ID,
+        `insert into public.bom_pnp_check_runs (project_id, product_id, release_id, bom_file_name, created_by)
+         values ($1, $2, $3, 'archived-proj.csv', $4)`,
+        [SEED_PROJECT_ID, SEED_PRODUCT_SENSOR_ID, draftReleaseId, MEMBER_ID],
+      ),
+    ).rejects.toThrow(/row-level security/);
+
+    const deletedWhileProjArchived = await ctx.asUser(
+      MEMBER_ID,
+      `delete from public.bom_pnp_check_runs where id = $1 returning id`,
+      [firstRunId],
+    );
+    expect(deletedWhileProjArchived).toHaveLength(0);
+
+    await ctx.asUser(OWNER_ID, `update public.projects set archived = false where id = $1`, [
+      SEED_PROJECT_ID,
+    ]);
+
+    // Member can delete an older draft check run while the release is still draft
+    const deletedDraftRun = await ctx.asUser<{ id: string }>(
+      MEMBER_ID,
+      `delete from public.bom_pnp_check_runs where id = $1 returning id`,
+      [firstRunId],
+    );
+    expect(deletedDraftRun).toHaveLength(1);
+
+    // Publish the draft release and verify stored check run stays readable and completely immutable
+    const publishedRows = await ctx.asUser<Release>(
+      MEMBER_ID,
+      `select * from public.publish_release($1)`,
+      [draftReleaseId],
+    );
+    expect(publishedRows[0]!.status).toBe('published');
+
+    const preservedRuns = await ctx.asUser<BomPnpCheckRun>(
+      VIEWER_ID,
+      `select * from public.bom_pnp_check_runs where release_id = $1`,
+      [draftReleaseId],
+    );
+    expect(preservedRuns).toHaveLength(1);
+    expect(preservedRuns[0]!.id).toBe(secondRunId);
+    expect(preservedRuns[0]!.bom_file_name).toBe('bom-rev-c-fixed.csv');
+
+    // Once published, INSERT, UPDATE, and DELETE all fail (both via RLS and DB triggers)
+    await expect(
+      ctx.asUser(
+        MEMBER_ID,
+        `insert into public.bom_pnp_check_runs (project_id, product_id, release_id, bom_file_name, created_by)
+         values ($1, $2, $3, 'post-publish.csv', $4)`,
+        [SEED_PROJECT_ID, SEED_PRODUCT_SENSOR_ID, draftReleaseId, MEMBER_ID],
+      ),
+    ).rejects.toThrow(/Cannot record a check run on a published release/);
+
+    await expect(
+      ctx.asSuperuser(
+        `insert into public.bom_pnp_check_runs (project_id, product_id, release_id, bom_file_name, created_by)
+         values ($1, $2, $3, 'post-publish-super.csv', $4)`,
+        [SEED_PROJECT_ID, SEED_PRODUCT_SENSOR_ID, draftReleaseId, MEMBER_ID],
+      ),
+    ).rejects.toThrow(/Cannot record a check run on a published release/);
+
+    await expect(
+      ctx.asSuperuser(
+        `update public.bom_pnp_check_runs set bom_file_name = 'tampered.csv' where id = $1`,
+        [secondRunId],
+      ),
+    ).rejects.toThrow(/Stored BOM\/PnP check runs are immutable/);
+
+    const rlsDeletedPublished = await ctx.asUser(
+      OWNER_ID,
+      `delete from public.bom_pnp_check_runs where id = $1 returning id`,
+      [secondRunId],
+    );
+    expect(rlsDeletedPublished).toHaveLength(0);
+
+    await expect(
+      ctx.asSuperuser(`delete from public.bom_pnp_check_runs where id = $1`, [secondRunId]),
+    ).rejects.toThrow(/Cannot delete check runs belonging to a published release/);
+
+    // Deleting a draft release cascades cleanly to its bom_pnp_check_runs
+    const disposableDraft = await ctx.asUser<Release>(
+      MEMBER_ID,
+      `insert into public.releases (project_id, product_id, version_label)
+       values ($1, $2, 'Rev D-Disposable') returning *`,
+      [SEED_PROJECT_ID, SEED_PRODUCT_SENSOR_ID],
+    );
+    const disposableDraftId = disposableDraft[0]!.id;
+
+    // Temporarily add OUTSIDER_ID as member, record a check run, remove OUTSIDER_ID, and verify can_view_profile still allows viewing their profile
+    await ctx.asUser(
+      OWNER_ID,
+      `select * from public.add_project_member_by_email($1, 'outsider@revlog.local', 'member')`,
+      [SEED_PROJECT_ID],
+    );
+
+    const outsiderRun = await ctx.asUser<BomPnpCheckRun>(
+      OUTSIDER_ID,
+      `insert into public.bom_pnp_check_runs (project_id, product_id, release_id, bom_file_name, created_by)
+       values ($1, $2, $3, 'disposable-bom.csv', $4) returning *`,
+      [SEED_PROJECT_ID, SEED_PRODUCT_SENSOR_ID, disposableDraftId, OUTSIDER_ID],
+    );
+    expect(outsiderRun).toHaveLength(1);
+
+    await ctx.asUser(
+      OWNER_ID,
+      `delete from public.project_members where project_id = $1 and user_id = $2`,
+      [SEED_PROJECT_ID, OUTSIDER_ID],
+    );
+
+    const visibleProfiles = await ctx.asUser<{ id: string }>(
+      VIEWER_ID,
+      `select id from public.profiles where id = $1`,
+      [OUTSIDER_ID],
+    );
+    expect(visibleProfiles).toHaveLength(1);
+
+    await ctx.asUser(MEMBER_ID, `delete from public.releases where id = $1`, [disposableDraftId]);
+
+    const remainingRuns = await ctx.asUser<BomPnpCheckRun>(
+      VIEWER_ID,
+      `select * from public.bom_pnp_check_runs where release_id = $1`,
+      [disposableDraftId],
+    );
+    expect(remainingRuns).toHaveLength(0);
   });
 });

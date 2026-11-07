@@ -3,6 +3,7 @@ import {
   AppstoreOutlined,
   BlockOutlined,
   CodeOutlined,
+  FileSearchOutlined,
   FolderOpenOutlined,
   HddOutlined,
   HistoryOutlined,
@@ -70,6 +71,9 @@ export function resolveSwitchedProjectPath(
   if (pathname === `${currentBase}/releases`) {
     return `${nextBase}/releases`;
   }
+  if (pathname === `${currentBase}/bom-pnp` || pathname.startsWith(`${currentBase}/bom-pnp`)) {
+    return `${nextBase}/bom-pnp`;
+  }
   return nextBase;
 }
 
@@ -93,6 +97,9 @@ export function resolveSwitchedProductPath(
   }
   if (pathname === `${currentBase}/releases`) {
     return `${nextBase}/releases`;
+  }
+  if (pathname === `${currentBase}/bom-pnp` || pathname.startsWith(`${currentBase}/bom-pnp`)) {
+    return `${nextBase}/bom-pnp`;
   }
   return nextBase;
 }
@@ -159,6 +166,9 @@ export function resolveHeaderTrailingSection(
         label: t('releases.detailBreadcrumb'),
       };
     }
+    if (pathname.startsWith(`${productBase}/bom-pnp`)) {
+      return { label: t('nav.bomPnp') };
+    }
     if (pathname.startsWith(`${productBase}/settings`)) {
       return { label: t('nav.productSettings') };
     }
@@ -191,6 +201,9 @@ export function resolveHeaderTrailingSection(
       parentTo: `${projectBase}/releases`,
       label: t('projectReleases.detailBreadcrumb'),
     };
+  }
+  if (pathname.startsWith(`${projectBase}/bom-pnp`)) {
+    return { label: t('nav.bomPnp') };
   }
   if (pathname.startsWith(`${projectBase}/settings`)) {
     return { label: t('nav.settings') };
@@ -243,6 +256,13 @@ export function buildProductNavSections(
           matches: (pathname) =>
             pathname.startsWith(`${productBase}/releases/new`) ||
             (pathname.startsWith(`${productBase}/releases/`) && pathname.endsWith('/edit')),
+        },
+        {
+          key: 'product-bom-pnp',
+          label: t('nav.bomPnp'),
+          to: `${productBase}/bom-pnp`,
+          icon: <FileSearchOutlined aria-hidden="true" />,
+          matches: (pathname) => pathname.startsWith(`${productBase}/bom-pnp`),
         },
         {
           key: 'product-settings',
@@ -351,6 +371,13 @@ export function buildProjectNavSections(
           matches: (pathname) =>
             pathname.startsWith(`${base}/releases/new`) ||
             (pathname.startsWith(`${base}/releases/`) && pathname.endsWith('/edit')),
+        },
+        {
+          key: 'project-bom-pnp',
+          label: t('nav.bomPnp'),
+          to: `${base}/bom-pnp`,
+          icon: <FileSearchOutlined aria-hidden="true" />,
+          matches: (pathname) => pathname.startsWith(`${base}/bom-pnp`),
         },
       ],
     },

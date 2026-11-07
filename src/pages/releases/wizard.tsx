@@ -27,6 +27,8 @@ import {
   DeleteOutlined,
   ExclamationCircleOutlined,
   FileOutlined,
+  FileSearchOutlined,
+  InfoCircleOutlined,
   LinkOutlined,
   LockOutlined,
 } from '@ant-design/icons';
@@ -37,7 +39,7 @@ import { useProductAccess } from '../../lib/useProjectAccess';
 import { formatFileSize, formatReleaseDate } from '../../lib/format';
 import { computeReleaseWarnings, suggestInitialItemIds } from '../../lib/releaseHelpers';
 import { supabaseClient } from '../../providers/supabaseClient';
-import type { Category, Item, Release } from '../../types/database';
+import type { BomPnpCheckRun, Category, Item, Release } from '../../types/database';
 
 interface StepOneFormValues {
   version_label: string;
@@ -80,6 +82,33 @@ export const ReleaseWizardPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [bomPnpRun, setBomPnpRun] = useState<BomPnpCheckRun | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      if (!draftRelease?.id) {
+        if (active) {
+          setBomPnpRun(null);
+        }
+        return;
+      }
+      const { data } = await supabaseClient
+        .from('bom_pnp_check_runs')
+        .select('*')
+        .eq('release_id', draftRelease.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (active && data) {
+        setBomPnpRun(data as BomPnpCheckRun);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [draftRelease?.id, currentStep]);
 
   useEffect(() => {
     document.title = `${
@@ -744,6 +773,147 @@ export const ReleaseWizardPage: React.FC = () => {
       {/* Step 2: Review */}
       {currentStep === 2 && (
         <div>
+          <Card
+            title={t('releases.bomPnpCardHeading')}
+            style={{ marginBottom: tokens.spacing.lg }}
+            extra={
+              draftRelease && (
+                <Button
+                  size="small"
+                  icon={<FileSearchOutlined aria-hidden="true" />}
+                  onClick={() =>
+                    navigate(
+                      `/projects/${projectId}/products/${productId}/bom-pnp?releaseId=${draftRelease.id}`,
+                    )
+                  }
+                >
+                  {t('releases.bomPnpOpenButton')}
+                </Button>
+              )
+            }
+          >
+            {bomPnpRun ? (
+              <div>
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: tokens.spacing.sm,
+                    marginBottom: tokens.spacing.sm,
+                  }}
+                >
+                  {bomPnpRun.summary.error_count === 0 &&
+                  bomPnpRun.summary.warning_count === 0 ? (
+                    <Tag
+                      bordered
+                      style={{
+                        backgroundColor: tokens.colors.publishedBg,
+                        borderColor: tokens.colors.publishedBorder,
+                        color: tokens.colors.publishedText,
+                      }}
+                    >
+                      <CheckCircleOutlined
+                        aria-hidden="true"
+                        style={{ marginInlineEnd: 4 }}
+                      />
+                      {t('releases.bomPnpCheckPassed')}
+                    </Tag>
+                  ) : (
+                    <Tag
+                      bordered
+                      style={{
+                        backgroundColor:
+                          bomPnpRun.summary.error_count > 0
+                            ? tokens.colors.errorBg
+                            : tokens.colors.warningBg,
+                        borderColor:
+                          bomPnpRun.summary.error_count > 0
+                            ? tokens.colors.errorBorder
+                            : tokens.colors.warningBorder,
+                        color:
+                          bomPnpRun.summary.error_count > 0
+                            ? tokens.colors.errorText
+                            : tokens.colors.warningText,
+                      }}
+                    >
+                      <ExclamationCircleOutlined
+                        aria-hidden="true"
+                        style={{ marginInlineEnd: 4 }}
+                      />
+                      {t('releases.bomPnpCheckIssues', {
+                        errors: bomPnpRun.summary.error_count,
+                        warnings: bomPnpRun.summary.warning_count,
+                      })}
+                    </Tag>
+                  )}
+                  {(bomPnpRun.bom_file_name || bomPnpRun.pnp_file_name) && (
+                    <Typography.Text type="secondary">
+                      {t('releases.bomPnpCheckedFiles', {
+                        bom: bomPnpRun.bom_file_name || '-',
+                        pnp: bomPnpRun.pnp_file_name || '-',
+                      })}
+                    </Typography.Text>
+                  )}
+                </div>
+
+                {bomPnpRun.findings.length > 0 && (
+                  <ul
+                    style={{
+                      margin: 0,
+                      paddingInlineStart: 0,
+                      listStyle: 'none',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: tokens.spacing.xs,
+                    }}
+                  >
+                    {bomPnpRun.findings.slice(0, 5).map((f) => (
+                      <li
+                        key={f.id}
+                        style={{
+                          color:
+                            f.severity === 'error'
+                              ? tokens.colors.errorText
+                              : f.severity === 'warning'
+                                ? tokens.colors.warningText
+                                : tokens.colors.draftText,
+                          display: 'flex',
+                          alignItems: 'flex-start',
+                          gap: 6,
+                        }}
+                      >
+                        <ExclamationCircleOutlined
+                          aria-hidden="true"
+                          style={{ marginTop: 3, flexShrink: 0 }}
+                        />
+                        <span>{f.message}</span>
+                      </li>
+                    ))}
+                    {bomPnpRun.findings.length > 5 && (
+                      <li style={{ marginTop: tokens.spacing.xs }}>
+                        <Typography.Text type="secondary">
+                          {t('releases.bomPnpMoreFindings', {
+                            count: bomPnpRun.findings.length - 5,
+                          })}
+                        </Typography.Text>
+                      </li>
+                    )}
+                  </ul>
+                )}
+              </div>
+            ) : (
+              <div className="revlog-inline-row">
+                <InfoCircleOutlined
+                  aria-hidden="true"
+                  style={{ color: tokens.colors.draftText }}
+                />
+                <Typography.Text type="secondary">
+                  {t('releases.bomPnpNoCheckRunYet')}
+                </Typography.Text>
+              </div>
+            )}
+          </Card>
+
           <Card title={t('releases.warningsHeading')} style={{ marginBottom: tokens.spacing.lg }}>
             {warnings.length === 0 ? (
               <div className="revlog-inline-row">

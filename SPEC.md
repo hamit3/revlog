@@ -18,7 +18,7 @@ The MVP (auth, projects, categories, items, release wizard, release history, rel
 
 ## Phase 1: Release trust (highest value)
 
-- [ ] 1. **BOM/PnP parsing and consistency check**
+- [x] 1. **BOM/PnP parsing and consistency check**
   - Separate page and sidebar menu entry ("BOM & PnP").
   - Parse BOM and PnP/centroid CSV exports (KiCad and Altium first); let the user map columns when headers are not recognized.
   - Show the parsed data as tables with search and filters.

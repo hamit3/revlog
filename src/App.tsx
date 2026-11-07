@@ -32,6 +32,7 @@ import { ProjectReleaseShowPage } from './pages/project-releases/show';
 import { ReleaseWizardPage } from './pages/releases/wizard';
 import { ReleaseListPage } from './pages/releases/list';
 import { ReleaseShowPage } from './pages/releases/show';
+import { BomPnpPage } from './pages/bom-pnp/BomPnpPage';
 
 export const App: React.FC = () => {
   return (
@@ -147,6 +148,7 @@ export const App: React.FC = () => {
                 <Route path="/projects/new" element={<CreateProjectPage />} />
                 <Route path="/projects/:projectId" element={<ProjectShowPage />} />
                 <Route path="/projects/:projectId/settings" element={<ProjectSettingsPage />} />
+                <Route path="/projects/:projectId/bom-pnp" element={<BomPnpPage />} />
 
                 {/* Project-level (system) releases */}
                 <Route path="/projects/:projectId/releases" element={<ProjectReleaseListPage />} />
@@ -172,6 +174,10 @@ export const App: React.FC = () => {
                 <Route
                   path="/projects/:projectId/products/:productId/settings"
                   element={<ProductSettingsPage />}
+                />
+                <Route
+                  path="/projects/:projectId/products/:productId/bom-pnp"
+                  element={<BomPnpPage />}
                 />
                 <Route
                   path="/projects/:projectId/products/:productId/releases"

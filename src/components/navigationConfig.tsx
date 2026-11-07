@@ -8,6 +8,7 @@ import {
   HddOutlined,
   HistoryOutlined,
   SettingOutlined,
+  SwapOutlined,
 } from '@ant-design/icons';
 import type { Product, ProductType } from '../types/database';
 
@@ -68,6 +69,9 @@ export function resolveSwitchedProjectPath(
   if (pathname === `${currentBase}/releases`) {
     return `${nextBase}/releases`;
   }
+  if (pathname === `${currentBase}/compare` || pathname.startsWith(`${currentBase}/compare`)) {
+    return `${nextBase}/compare`;
+  }
   if (pathname === `${currentBase}/bom-pnp` || pathname.startsWith(`${currentBase}/bom-pnp`)) {
     return `${nextBase}/bom-pnp`;
   }
@@ -94,6 +98,9 @@ export function resolveSwitchedProductPath(
     if (pathname === `${projectBase}/releases` || pathname.startsWith(`${projectBase}/releases/`)) {
       return `${nextBase}/releases`;
     }
+    if (pathname === `${projectBase}/compare` || pathname.startsWith(`${projectBase}/compare`)) {
+      return `${nextBase}/compare`;
+    }
     if (pathname === `${projectBase}/bom-pnp` || pathname.startsWith(`${projectBase}/bom-pnp`)) {
       return `${nextBase}/bom-pnp`;
     }
@@ -105,6 +112,9 @@ export function resolveSwitchedProductPath(
   }
   if (pathname === `${currentBase}/releases`) {
     return `${nextBase}/releases`;
+  }
+  if (pathname === `${currentBase}/compare` || pathname.startsWith(`${currentBase}/compare`)) {
+    return `${nextBase}/compare`;
   }
   if (pathname === `${currentBase}/bom-pnp` || pathname.startsWith(`${currentBase}/bom-pnp`)) {
     return `${nextBase}/bom-pnp`;
@@ -131,6 +141,9 @@ export function resolveSwitchedToProjectScopePath(
   }
   if (pathname === `${currentBase}/releases` || pathname.startsWith(`${currentBase}/releases/`)) {
     return `${projectBase}/releases`;
+  }
+  if (pathname === `${currentBase}/compare` || pathname.startsWith(`${currentBase}/compare`)) {
+    return `${projectBase}/compare`;
   }
   if (pathname === `${currentBase}/bom-pnp` || pathname.startsWith(`${currentBase}/bom-pnp`)) {
     return `${projectBase}/bom-pnp`;
@@ -199,6 +212,9 @@ export function resolveHeaderTrailingSection(
         label: t('releases.detailBreadcrumb'),
       };
     }
+    if (pathname.startsWith(`${productBase}/compare`)) {
+      return { label: t('nav.compare') };
+    }
     if (pathname.startsWith(`${productBase}/bom-pnp`)) {
       return { label: t('nav.bomPnp') };
     }
@@ -234,6 +250,9 @@ export function resolveHeaderTrailingSection(
       parentTo: `${projectBase}/releases`,
       label: t('projectReleases.detailBreadcrumb'),
     };
+  }
+  if (pathname.startsWith(`${projectBase}/compare`)) {
+    return { label: t('nav.compare') };
   }
   if (pathname.startsWith(`${projectBase}/bom-pnp`)) {
     return { label: t('nav.bomPnp') };
@@ -299,6 +318,17 @@ export function buildProjectNavSections(
             Boolean(projectId) &&
             (pathname === `${targetBase}/releases` ||
               pathname.startsWith(`${targetBase}/releases/`)),
+        },
+        {
+          key: 'nav-compare',
+          label: t('nav.compare'),
+          to: projectId ? `${targetBase}/compare` : undefined,
+          disabled: !projectId,
+          icon: <SwapOutlined aria-hidden="true" />,
+          matches: (pathname) =>
+            Boolean(projectId) &&
+            (pathname === `${targetBase}/compare` ||
+              pathname.startsWith(`${targetBase}/compare`)),
         },
         {
           key: 'nav-bom-pnp',

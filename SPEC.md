@@ -29,7 +29,7 @@ The MVP (auth, projects, categories, items, release wizard, release history, rel
   - The release wizard "Review" step shows the latest check results and warns, but does not block.
   - Unit tests with sample KiCad and Altium files.
 
-- [ ] 2. **Release comparison**
+- [x] 2. **Release comparison**
   - Separate page and menu entry ("Compare").
   - Pick any two published releases of a project.
   - Show added, removed and changed items per category, with changed `sha256` or `url` highlighted.

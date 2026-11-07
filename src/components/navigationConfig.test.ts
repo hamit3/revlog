@@ -33,6 +33,7 @@ describe('Flat Project Menu + In-Page Tabs navigationConfig and switcher helpers
       'nav-projects',
       'nav-overview',
       'nav-releases',
+      'nav-compare',
       'nav-bom-pnp',
       'nav-settings',
     ]);
@@ -69,6 +70,10 @@ describe('Flat Project Menu + In-Page Tabs navigationConfig and switcher helpers
       selectedKeys: ['nav-releases'],
       openKeys: [],
     });
+    expect(resolveActiveNavKeys(projectSections, '/projects/proj-1/compare')).toEqual({
+      selectedKeys: ['nav-compare'],
+      openKeys: [],
+    });
     expect(resolveActiveNavKeys(projectSections, '/projects/proj-1/bom-pnp')).toEqual({
       selectedKeys: ['nav-bom-pnp'],
       openKeys: [],
@@ -90,6 +95,7 @@ describe('Flat Project Menu + In-Page Tabs navigationConfig and switcher helpers
       'nav-projects',
       'nav-overview',
       'nav-releases',
+      'nav-compare',
       'nav-bom-pnp',
       'nav-settings',
     ]);
@@ -114,6 +120,12 @@ describe('Flat Project Menu + In-Page Tabs navigationConfig and switcher helpers
       resolveActiveNavKeys(productSections, '/projects/proj-1/products/prod-a/releases/new'),
     ).toEqual({
       selectedKeys: ['nav-releases'],
+      openKeys: [],
+    });
+    expect(
+      resolveActiveNavKeys(productSections, '/projects/proj-1/products/prod-a/compare'),
+    ).toEqual({
+      selectedKeys: ['nav-compare'],
       openKeys: [],
     });
     expect(

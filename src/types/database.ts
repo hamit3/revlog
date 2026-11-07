@@ -1,6 +1,6 @@
 export type ProjectRole = 'owner' | 'member' | 'viewer';
 export type ItemKind = 'file' | 'link';
-export type ReleaseStatus = 'draft' | 'published';
+export type ReleaseStatus = 'draft' | 'in_review' | 'approved' | 'published';
 export type ProductType = 'hardware' | 'software' | 'mixed';
 export type ProductTemplate = 'hardware_software' | 'hardware_only' | 'software_only' | 'empty';
 export type ProjectTemplate = 'hardware_product' | 'empty';
@@ -17,6 +17,7 @@ export interface Project {
   name: string;
   description: string | null;
   archived: boolean;
+  require_release_approval: boolean;
   created_by: string;
   created_at: string;
   updated_at: string;
@@ -85,8 +86,16 @@ export interface Release {
   published_at: string | null;
   published_by: string | null;
   manifest_hash: string | null;
+  submitted_for_review_at?: string | null;
+  submitted_for_review_by?: string | null;
+  approved_at?: string | null;
+  approved_by?: string | null;
+  approval_notes?: string | null;
+  created_by?: string | null;
   created_at: string;
   profiles?: Profile | null;
+  submitted_by_profile?: Profile | null;
+  approved_by_profile?: Profile | null;
 }
 
 export interface ReleaseItem {

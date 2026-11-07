@@ -281,9 +281,7 @@ export function buildProjectNavSections(
   const activeProductId = options?.activeProductId;
   const projectBase = projectId ? `/projects/${projectId}` : '/projects';
   const targetBase =
-    projectId && activeProductId
-      ? `${projectBase}/products/${activeProductId}`
-      : projectBase;
+    projectId && activeProductId ? `${projectBase}/products/${activeProductId}` : projectBase;
 
   return [
     {
@@ -327,8 +325,7 @@ export function buildProjectNavSections(
           icon: <SwapOutlined aria-hidden="true" />,
           matches: (pathname) =>
             Boolean(projectId) &&
-            (pathname === `${targetBase}/compare` ||
-              pathname.startsWith(`${targetBase}/compare`)),
+            (pathname === `${targetBase}/compare` || pathname.startsWith(`${targetBase}/compare`)),
         },
         {
           key: 'nav-bom-pnp',
@@ -336,8 +333,7 @@ export function buildProjectNavSections(
           to: projectId ? `${targetBase}/bom-pnp` : undefined,
           disabled: !projectId,
           icon: <FileSearchOutlined aria-hidden="true" />,
-          matches: (pathname) =>
-            Boolean(projectId) && pathname.startsWith(`${targetBase}/bom-pnp`),
+          matches: (pathname) => Boolean(projectId) && pathname.startsWith(`${targetBase}/bom-pnp`),
         },
         {
           key: 'nav-settings',

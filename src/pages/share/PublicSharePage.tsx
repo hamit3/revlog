@@ -34,7 +34,11 @@ import {
 } from '../../lib/releasePackage';
 import { triggerBlobDownload } from '../../lib/storage';
 import { supabaseClient } from '../../providers/supabaseClient';
-import type { PublicSharedRelease, PublicSharedReleaseItem, ReleaseItem } from '../../types/database';
+import type {
+  PublicSharedRelease,
+  PublicSharedReleaseItem,
+  ReleaseItem,
+} from '../../types/database';
 
 const RevLogBrandIcon: React.FC = () => (
   <span
@@ -165,9 +169,7 @@ export const PublicSharePage: React.FC = () => {
     );
 
     setIsPackaging(true);
-    setPackagingStatus(
-      t('releases.packagingProgress', { current: 0, total: fileItems.length }),
-    );
+    setPackagingStatus(t('releases.packagingProgress', { current: 0, total: fileItems.length }));
 
     try {
       const convertedReleaseItems: ReleaseItem[] = data.items.map((it) => ({
@@ -184,7 +186,8 @@ export const PublicSharePage: React.FC = () => {
         url: it.url,
         storage_path: it.storage_path,
         version_label: it.version_label,
-        created_at: data.release.published_at || data.release.release_date || new Date().toISOString(),
+        created_at:
+          data.release.published_at || data.release.release_date || new Date().toISOString(),
       }));
 
       const manifest = await buildReleasePackageManifest({
@@ -312,7 +315,11 @@ export const PublicSharePage: React.FC = () => {
       key: 'version_label',
       width: 110,
       render: (val: string | null) =>
-        val ? <Tag bordered>{val}</Tag> : <Typography.Text type="secondary">{t('common.none')}</Typography.Text>,
+        val ? (
+          <Tag bordered>{val}</Tag>
+        ) : (
+          <Typography.Text type="secondary">{t('common.none')}</Typography.Text>
+        ),
     },
     {
       title: t('releases.columns.artifact'),
@@ -426,7 +433,13 @@ export const PublicSharePage: React.FC = () => {
       </header>
 
       {/* Main Container */}
-      <main style={{ maxWidth: 1200, margin: '0 auto', padding: `${tokens.spacing.xl} ${tokens.spacing.lg}` }}>
+      <main
+        style={{
+          maxWidth: 1200,
+          margin: '0 auto',
+          padding: `${tokens.spacing.xl} ${tokens.spacing.lg}`,
+        }}
+      >
         {/* Release Title & Top Actions */}
         <div
           style={{

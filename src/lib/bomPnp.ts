@@ -369,7 +369,8 @@ export function parseCsvTable(text: string): ParsedCsvTable {
           break;
         }
         const currNonEmpty = sampleNonEmpty[i] ?? 0;
-        const nextNonEmpty = i + 1 < sampleNonEmpty.length ? (sampleNonEmpty[i + 1] ?? 0) : currNonEmpty;
+        const nextNonEmpty =
+          i + 1 < sampleNonEmpty.length ? (sampleNonEmpty[i + 1] ?? 0) : currNonEmpty;
         if (currNonEmpty >= 3 && nextNonEmpty >= Math.min(3, currNonEmpty - 1)) {
           candidateIdx = i;
           break;
@@ -558,8 +559,7 @@ export function detectBomColumnMapping(headers: readonly string[]): BomColumnDet
   const normalizedSet = new Set(headers.map((h) => normalizeHeaderKey(h)));
   let format: BomPnpFormat = 'unrecognized';
   if (!needsColumnMapping) {
-    const hasAltiumDesignator =
-      normalizedSet.has('designator') || normalizedSet.has('designators');
+    const hasAltiumDesignator = normalizedSet.has('designator') || normalizedSet.has('designators');
     const hasAltiumSecondary =
       normalizedSet.has('comment') ||
       normalizedSet.has('fitted') ||
@@ -1349,9 +1349,7 @@ export function runBomPnpChecks({
   }
 
   const bomRowCount = hasBom ? bomRows.length : 0;
-  const bomComponentCount = hasBom
-    ? bomRows.reduce((sum, r) => sum + r.designators.length, 0)
-    : 0;
+  const bomComponentCount = hasBom ? bomRows.reduce((sum, r) => sum + r.designators.length, 0) : 0;
   const bomDnpCount = hasBom
     ? bomRows.reduce((sum, r) => sum + (r.dnp ? Math.max(r.designators.length, 1) : 0), 0)
     : 0;

@@ -222,7 +222,9 @@ export const ComparePage: React.FC = () => {
   const { query: baseItemsQuery } = useList<ReleaseItem>({
     resource: 'release_items',
     pagination: { mode: 'off' },
-    filters: effectiveBaseId ? [{ field: 'release_id', operator: 'eq', value: effectiveBaseId }] : [],
+    filters: effectiveBaseId
+      ? [{ field: 'release_id', operator: 'eq', value: effectiveBaseId }]
+      : [],
     queryOptions: {
       enabled: Boolean(productId && effectiveBaseId),
     },
@@ -349,8 +351,7 @@ export const ComparePage: React.FC = () => {
 
   // Compute System Product Diffs deterministically
   const systemDiffResult = useMemo(
-    () =>
-      !productId ? compareProjectReleases(baseProjectProducts, targetProjectProducts) : null,
+    () => (!productId ? compareProjectReleases(baseProjectProducts, targetProjectProducts) : null),
     [baseProjectProducts, productId, targetProjectProducts],
   );
 
@@ -809,7 +810,10 @@ export const ComparePage: React.FC = () => {
       </Card>
 
       {/* Comparison Summary Cards */}
-      <Row gutter={[tokens.spacing.md, tokens.spacing.md]} style={{ marginBottom: tokens.spacing.md }}>
+      <Row
+        gutter={[tokens.spacing.md, tokens.spacing.md]}
+        style={{ marginBottom: tokens.spacing.md }}
+      >
         <Col xs={12} sm={6}>
           <Card size="small" style={{ borderLeft: `3px solid ${tokens.colors.publishedText}` }}>
             <div className="revlog-secondary-text">{t('compare.added')}</div>
@@ -930,8 +934,7 @@ export const ComparePage: React.FC = () => {
                     key: 'bom',
                     label: (
                       <span>
-                        {t('compare.bomTab')}{' '}
-                        {hasBothBomData && `(${filteredBomParts.length})`}
+                        {t('compare.bomTab')} {hasBothBomData && `(${filteredBomParts.length})`}
                       </span>
                     ),
                     children: (
@@ -966,8 +969,7 @@ export const ComparePage: React.FC = () => {
                     key: 'system',
                     label: (
                       <span>
-                        {t('compare.systemTab')} (
-                        {systemDiffResult?.products.length ?? 0})
+                        {t('compare.systemTab')} ({systemDiffResult?.products.length ?? 0})
                       </span>
                     ),
                     children: (

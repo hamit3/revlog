@@ -567,12 +567,7 @@ export const AppLayout: React.FC = () => {
         );
         navigate(targetPath);
       } else {
-        const targetPath = resolveSwitchedProductPath(
-          location.pathname,
-          projectId,
-          productId,
-          key,
-        );
+        const targetPath = resolveSwitchedProductPath(location.pathname, projectId, productId, key);
         navigate(targetPath);
       }
     },
@@ -832,9 +827,11 @@ export const AppLayout: React.FC = () => {
                       flexShrink: 0,
                     }}
                   >
-                    {activeProduct
-                      ? getProductTypeIcon(activeProduct.product_type)
-                      : <BlockOutlined aria-hidden="true" />}
+                    {activeProduct ? (
+                      getProductTypeIcon(activeProduct.product_type)
+                    ) : (
+                      <BlockOutlined aria-hidden="true" />
+                    )}
                   </span>
                   <span className="revlog-context-segment-label">
                     {activeProduct?.name ?? t('nav.allProducts')}

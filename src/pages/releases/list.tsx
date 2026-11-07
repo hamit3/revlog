@@ -69,8 +69,7 @@ export const ReleaseListPage: React.FC = () => {
         (ri) => ri.kind === 'file' && Boolean(ri.storage_path) && Boolean(ri.file_name),
       );
 
-      const publisher =
-        rel.profiles?.full_name || rel.profiles?.email || t('common.unknownUser');
+      const publisher = rel.profiles?.full_name || rel.profiles?.email || t('common.unknownUser');
 
       const manifest = await buildReleasePackageManifest({
         release: rel,
@@ -237,12 +236,19 @@ export const ReleaseListPage: React.FC = () => {
             items={orderedReleases.map((rel) => {
               const isPublished = rel.status === 'published';
               const isLatest = rel.id === latestPublishedId;
+              const isReviewable = rel.status === 'in_review' || rel.status === 'approved';
               const publisher =
                 rel.profiles?.full_name || rel.profiles?.email || t('common.unknownUser');
+              const timelineColor =
+                rel.status === 'published' || rel.status === 'approved'
+                  ? tokens.colors.publishedText
+                  : rel.status === 'in_review'
+                    ? tokens.colors.warningText
+                    : tokens.colors.draftText;
 
               return {
                 key: rel.id,
-                color: isPublished ? tokens.colors.publishedText : tokens.colors.draftText,
+                color: timelineColor,
                 children: (
                   <Card
                     size="small"
@@ -262,7 +268,7 @@ export const ReleaseListPage: React.FC = () => {
                       }}
                     >
                       <div className="revlog-inline-row">
-                        {isPublished ? (
+                        {isPublished || isReviewable ? (
                           <Link
                             to={`${productBase}/releases/${rel.id}`}
                             style={{ color: tokens.colors.textPrimary }}
@@ -277,7 +283,7 @@ export const ReleaseListPage: React.FC = () => {
                           </Typography.Title>
                         )}
 
-                        <StatusBadge kind={isPublished ? 'published' : 'draft'} />
+                        <StatusBadge kind={rel.status} />
                         {isLatest && <StatusBadge kind="latest" />}
                       </div>
 
@@ -302,6 +308,16 @@ export const ReleaseListPage: React.FC = () => {
                             {t('releases.viewRelease')}
                           </Button>
                         </Space>
+                      ) : isReviewable ? (
+                        <Button
+                          size="small"
+                          icon={<ArrowRightOutlined aria-hidden="true" />}
+                          onClick={() => navigate(`${productBase}/releases/${rel.id}`)}
+                        >
+                          {rel.status === 'in_review'
+                            ? t('releases.reviewRelease')
+                            : t('releases.viewRelease')}
+                        </Button>
                       ) : (
                         canEditContent && (
                           <Button
@@ -327,6 +343,18 @@ export const ReleaseListPage: React.FC = () => {
                           <span className="revlog-mini-avatar">{publisherInitials(publisher)}</span>
                           <span>{publisher}</span>
                         </>
+                      ) : rel.status === 'approved' ? (
+                        <>
+                          <span>{formatDateTime(rel.approved_at || rel.created_at)}</span>
+                          {rel.approval_notes && (
+                            <>
+                              <span aria-hidden="true">·</span>
+                              <span>{rel.approval_notes}</span>
+                            </>
+                          )}
+                        </>
+                      ) : rel.status === 'in_review' ? (
+                        <span>{formatDateTime(rel.submitted_for_review_at || rel.created_at)}</span>
                       ) : (
                         <span>{formatReleaseDate(rel.created_at)}</span>
                       )}

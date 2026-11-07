@@ -112,7 +112,9 @@
     "published": "Published",
     "draft": "Draft",
     "archived": "Archived",
-    "latest": "Latest"
+    "latest": "Latest",
+    "inReview": "In review",
+    "approved": "Approved"
   },
   "projects": {
     "pageTitle": "Projects",
@@ -369,6 +371,12 @@
     "detailSubtitle": "Read-only cryptographic product snapshot.",
     "publishedAtLabel": "Published",
     "publishedByLabel": "Published by",
+    "submittedAtLabel": "Submitted",
+    "submittedByLabel": "Submitted by",
+    "approvedAtLabel": "Approved",
+    "approvedByLabel": "Approved by",
+    "approvalNotesHeading": "Approval notes",
+    "reviewRelease": "Review release",
     "manifestHashLabel": "Manifest SHA-256",
     "manifestVerified": "Verified",
     "manifestMismatch": "Hash mismatch",
@@ -552,7 +560,32 @@
     "unarchiveDescription": "This project is currently archived. Unarchive it to allow adding products, items and releases.",
     "archiveConfirm": "Archive this project?",
     "archivedSuccess": "Project archived.",
-    "unarchivedSuccess": "Project unarchived."
+    "unarchivedSuccess": "Project unarchived.",
+    "approvalWorkflowHeading": "Release approval workflow",
+    "requireApprovalLabel": "Require two-person approval before publishing",
+    "requireApprovalDescription": "When enabled, releases cannot be published until approved by a second team member or owner.",
+    "approvalSettingSaved": "Approval workflow setting updated."
+  },
+  "approval": {
+    "workflowHeading": "Release approval workflow",
+    "submitForReview": "Submit for review",
+    "submittedForReviewSuccess": "Release submitted for review.",
+    "inReviewNotice": "Release is currently in review.",
+    "waitingForReviewer": "Waiting for review by a second team member or owner.",
+    "needsSecondPersonApproval": "This project requires release approval by a second team member before publishing.",
+    "approveButton": "Approve release",
+    "approvedSuccess": "Release approved.",
+    "approvedBanner": "Approved by {{name}} on {{date}}.",
+    "readyToPublish": "Approved and ready to publish.",
+    "requestChangesButton": "Request changes",
+    "changesRequestedSuccess": "Release returned to draft for changes.",
+    "cancelReviewButton": "Cancel review",
+    "reviewCancelledSuccess": "Review cancelled and returned to draft.",
+    "selfApprovalForbidden": "You cannot approve your own release. A second team member or owner must review it.",
+    "approvalNotesLabel": "Review notes (optional)",
+    "approvalNotesPlaceholder": "Verified schematics, BOM, and checklist compliance...",
+    "rejectionNotesLabel": "Change request notes (optional)",
+    "rejectionNotesPlaceholder": "Please update BOM references..."
   },
   "bomPnp": {
     "pageTitle": "BOM & PnP",

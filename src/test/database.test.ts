@@ -16,6 +16,7 @@ import type {
   AuditLog,
   BomPnpCheckRun,
   Product,
+  Project,
   ProjectRelease,
   ProjectReleaseProduct,
   PublicSharedRelease,
@@ -913,17 +914,13 @@ describe('Database migrations, products, product & project releases, immutabilit
 
     // 10. Audit logs are strictly append-only: UPDATE and DELETE are blocked
     await expect(
-      ctx.asSuperuser(
-        `update public.audit_logs set action = 'tampered' where id = $1`,
-        [creationLogs[0]!.id],
-      ),
+      ctx.asSuperuser(`update public.audit_logs set action = 'tampered' where id = $1`, [
+        creationLogs[0]!.id,
+      ]),
     ).rejects.toThrow(/Audit logs are strictly append-only/);
 
     await expect(
-      ctx.asSuperuser(
-        `delete from public.audit_logs where id = $1`,
-        [creationLogs[0]!.id],
-      ),
+      ctx.asSuperuser(`delete from public.audit_logs where id = $1`, [creationLogs[0]!.id]),
     ).rejects.toThrow(/Audit logs are strictly append-only/);
   });
 
@@ -1009,5 +1006,173 @@ describe('Database migrations, products, product & project releases, immutabilit
       [ownerWarningRule[0]!.id],
     );
     expect(deleted).toHaveLength(1);
+  });
+
+  it('enforces release review and approval workflow with second-person rule before publishing', async () => {
+    // 1. Enable require_release_approval on the seed project as OWNER
+    const updatedProjects = await ctx.asUser<Project>(
+      OWNER_ID,
+      `update public.projects set require_release_approval = true where id = $1 returning *`,
+      [SEED_PROJECT_ID],
+    );
+    expect(updatedProjects[0]!.require_release_approval).toBe(true);
+
+    try {
+      // 2. Member creates a draft release
+      const createdReleases = await ctx.asUser<Release>(
+        MEMBER_ID,
+        `insert into public.releases (project_id, product_id, version_label, notes, status, created_by)
+         values ($1, $2, 'Rev-Approval-1.0', 'Draft requiring approval', 'draft', $3)
+         returning *`,
+        [SEED_PROJECT_ID, SEED_PRODUCT_SENSOR_ID, MEMBER_ID],
+      );
+      expect(createdReleases).toHaveLength(1);
+      const testReleaseId = createdReleases[0]!.id;
+      expect(createdReleases[0]!.created_by).toBe(MEMBER_ID);
+      expect(createdReleases[0]!.status).toBe('draft');
+
+      // 3. Submitting with 0 items fails
+      await expect(
+        ctx.asUser(MEMBER_ID, `select * from public.submit_release_for_review($1)`, [
+          testReleaseId,
+        ]),
+      ).rejects.toThrow(/Release must contain at least one item before submitting for review/);
+
+      // 4. Add item to the draft
+      await ctx.asUser(
+        MEMBER_ID,
+        `insert into public.release_items (release_id, item_id)
+         values ($1, $2)`,
+        [testReleaseId, SEED_BOM_ITEM_ID],
+      );
+
+      // 5. Direct publishing is blocked because project requires approval and release is draft
+      await expect(
+        ctx.asUser(MEMBER_ID, `select * from public.publish_release($1)`, [testReleaseId]),
+      ).rejects.toThrow(
+        /This project requires release approval by a second person before publishing/,
+      );
+
+      // 6. Member submits for review
+      const submittedRows = await ctx.asUser<Release>(
+        MEMBER_ID,
+        `select * from public.submit_release_for_review($1)`,
+        [testReleaseId],
+      );
+      expect(submittedRows).toHaveLength(1);
+      expect(submittedRows[0]!.status).toBe('in_review');
+      expect(submittedRows[0]!.submitted_for_review_by).toBe(MEMBER_ID);
+      expect(submittedRows[0]!.submitted_for_review_at).not.toBeNull();
+
+      // 7. Modifying release items while in review is blocked by RLS
+      await expect(
+        ctx.asUser(
+          MEMBER_ID,
+          `insert into public.release_items (release_id, item_id)
+           values ($1, $2)`,
+          [testReleaseId, SEED_FW_ITEM_ID],
+        ),
+      ).rejects.toThrow();
+
+      // 8. Cancel review returns status to draft
+      const cancelledRows = await ctx.asUser<Release>(
+        MEMBER_ID,
+        `select * from public.cancel_release_review($1)`,
+        [testReleaseId],
+      );
+      expect(cancelledRows[0]!.status).toBe('draft');
+      expect(cancelledRows[0]!.submitted_for_review_by).toBeNull();
+      expect(cancelledRows[0]!.submitted_for_review_at).toBeNull();
+
+      // Resubmit for review
+      await ctx.asUser(MEMBER_ID, `select * from public.submit_release_for_review($1)`, [
+        testReleaseId,
+      ]);
+
+      // 9. Self-approval is rejected: Member (author and submitter) CANNOT approve own release
+      await expect(
+        ctx.asUser(MEMBER_ID, `select * from public.approve_release($1, 'Self approval attempt')`, [
+          testReleaseId,
+        ]),
+      ).rejects.toThrow(
+        /Releases cannot be approved by the author or submitter; approval requires a second person/,
+      );
+
+      // 10. Viewer cannot approve
+      await expect(
+        ctx.asUser(
+          VIEWER_ID,
+          `select * from public.approve_release($1, 'Viewer approval attempt')`,
+          [testReleaseId],
+        ),
+      ).rejects.toThrow(/Only project owners or members can approve releases/);
+
+      // 11. Reject release returns to draft and saves rejection notes
+      const rejectedRows = await ctx.asUser<Release>(
+        OWNER_ID,
+        `select * from public.reject_release($1, 'Please update BOM part values')`,
+        [testReleaseId],
+      );
+      expect(rejectedRows[0]!.status).toBe('draft');
+      expect(rejectedRows[0]!.approval_notes).toBe('Please update BOM part values');
+      expect(rejectedRows[0]!.submitted_for_review_by).toBeNull();
+
+      // Resubmit for review
+      await ctx.asUser(MEMBER_ID, `select * from public.submit_release_for_review($1)`, [
+        testReleaseId,
+      ]);
+
+      // 12. Second person (OWNER_ID) approves the release
+      const approvedRows = await ctx.asUser<Release>(
+        OWNER_ID,
+        `select * from public.approve_release($1, 'Approved for pilot production batch')`,
+        [testReleaseId],
+      );
+      expect(approvedRows).toHaveLength(1);
+      expect(approvedRows[0]!.status).toBe('approved');
+      expect(approvedRows[0]!.approved_by).toBe(OWNER_ID);
+      expect(approvedRows[0]!.approved_at).not.toBeNull();
+      expect(approvedRows[0]!.approval_notes).toBe('Approved for pilot production batch');
+
+      // 13. Published fields check constraint enforces second-person rule at DB level
+      await expect(
+        ctx.asSuperuser(
+          `update public.releases set approved_by = submitted_for_review_by where id = $1`,
+          [testReleaseId],
+        ),
+      ).rejects.toThrow(/releases_published_fields_check/);
+
+      // 14. Member publishes the approved release
+      const publishedRows = await ctx.asUser<Release>(
+        MEMBER_ID,
+        `select * from public.publish_release($1)`,
+        [testReleaseId],
+      );
+      expect(publishedRows).toHaveLength(1);
+      expect(publishedRows[0]!.status).toBe('published');
+      expect(publishedRows[0]!.manifest_hash).toMatch(/^[0-9a-f]{64}$/);
+      expect(publishedRows[0]!.published_by).toBe(MEMBER_ID);
+      expect(publishedRows[0]!.approved_by).toBe(OWNER_ID);
+      expect(publishedRows[0]!.approval_notes).toBe('Approved for pilot production batch');
+
+      // 15. Verify audit logs were appended for all approval actions
+      const logs = await ctx.asUser<AuditLog>(
+        OWNER_ID,
+        `select * from public.audit_logs where target_id = $1 order by created_at asc`,
+        [testReleaseId],
+      );
+      const loggedActions = logs.map((l) => l.action);
+      expect(loggedActions).toContain('release.submitted_for_review');
+      expect(loggedActions).toContain('release.review_cancelled');
+      expect(loggedActions).toContain('release.rejected');
+      expect(loggedActions).toContain('release.approved');
+      expect(loggedActions).toContain('release.published');
+    } finally {
+      // Revert require_release_approval to false
+      await ctx.asSuperuser(
+        `update public.projects set require_release_approval = false where id = $1`,
+        [SEED_PROJECT_ID],
+      );
+    }
   });
 });

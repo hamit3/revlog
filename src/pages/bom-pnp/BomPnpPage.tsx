@@ -33,11 +33,7 @@ import { useProductAccess, useProjectAccess } from '../../lib/useProjectAccess';
 import { supabaseClient } from '../../providers/supabaseClient';
 import { downloadProjectFileText, validateUploadFileSize } from '../../lib/storage';
 import { sha256HexFromFile, sha256HexFromString } from '../../lib/sha256';
-import {
-  evaluateBomPnpCsvTexts,
-  isLikelyBomName,
-  isLikelyPnpName,
-} from '../../lib/bomPnp';
+import { evaluateBomPnpCsvTexts, isLikelyBomName, isLikelyPnpName } from '../../lib/bomPnp';
 import type {
   BomColumnMapping,
   BomPnpCheckRun,
@@ -208,11 +204,15 @@ export const BomPnpPage: React.FC = () => {
       setProductItems(itmList);
 
       // Pre-select suggested BOM and PnP items if not already set
-      const likelyBom = itmList.find((i) => isLikelyBomName(i.title) || isLikelyBomName(i.file_name ?? ''));
+      const likelyBom = itmList.find(
+        (i) => isLikelyBomName(i.title) || isLikelyBomName(i.file_name ?? ''),
+      );
       if (likelyBom) {
         setSelectedBomItemId((prev) => prev || likelyBom.id);
       }
-      const likelyPnp = itmList.find((i) => isLikelyPnpName(i.title) || isLikelyPnpName(i.file_name ?? ''));
+      const likelyPnp = itmList.find(
+        (i) => isLikelyPnpName(i.title) || isLikelyPnpName(i.file_name ?? ''),
+      );
       if (likelyPnp) {
         setSelectedPnpItemId((prev) => prev || likelyPnp.id);
       }
@@ -400,7 +400,15 @@ export const BomPnpPage: React.FC = () => {
     return () => {
       active = false;
     };
-  }, [isPublishedRelease, bomText, pnpText, bomMappingOverride, pnpMappingOverride, latestCheckRun, t]);
+  }, [
+    isPublishedRelease,
+    bomText,
+    pnpText,
+    bomMappingOverride,
+    pnpMappingOverride,
+    latestCheckRun,
+    t,
+  ]);
 
   // Current detection results for headers
   const evaluationResult = useMemo(() => {
@@ -698,7 +706,8 @@ export const BomPnpPage: React.FC = () => {
       title: t('bomPnp.columns.manufacturer'),
       dataIndex: 'manufacturer',
       key: 'manufacturer',
-      render: (val: string) => val || <Typography.Text type="secondary">{t('common.none')}</Typography.Text>,
+      render: (val: string) =>
+        val || <Typography.Text type="secondary">{t('common.none')}</Typography.Text>,
     },
     {
       title: t('bomPnp.columns.quantity'),
@@ -793,7 +802,8 @@ export const BomPnpPage: React.FC = () => {
       dataIndex: 'rotation',
       key: 'rotation',
       width: 90,
-      render: (val: number | null, r: ParsedPnpRow) => (val !== null ? `${val}°` : r.rawRotation || '-'),
+      render: (val: number | null, r: ParsedPnpRow) =>
+        val !== null ? `${val}°` : r.rawRotation || '-',
     },
     {
       title: t('bomPnp.columns.side'),
@@ -869,7 +879,10 @@ export const BomPnpPage: React.FC = () => {
         >
           {!productId && (
             <div style={{ minWidth: 220 }}>
-              <Typography.Text type="secondary" style={{ display: 'block', marginBottom: tokens.spacing.xs }}>
+              <Typography.Text
+                type="secondary"
+                style={{ display: 'block', marginBottom: tokens.spacing.xs }}
+              >
                 {t('nav.product')}
               </Typography.Text>
               <Select
@@ -886,7 +899,10 @@ export const BomPnpPage: React.FC = () => {
           )}
 
           <div style={{ minWidth: 260 }}>
-            <Typography.Text type="secondary" style={{ display: 'block', marginBottom: tokens.spacing.xs }}>
+            <Typography.Text
+              type="secondary"
+              style={{ display: 'block', marginBottom: tokens.spacing.xs }}
+            >
               {t('bomPnp.selectReleasePrompt')}
             </Typography.Text>
             <Select
@@ -990,13 +1006,24 @@ export const BomPnpPage: React.FC = () => {
                   >
                     {t('bomPnp.uploadFileButton')}
                   </Button>
-                  {bomFileName && <span style={{ marginInlineStart: tokens.spacing.sm }}>{bomFileName}</span>}
+                  {bomFileName && (
+                    <span style={{ marginInlineStart: tokens.spacing.sm }}>{bomFileName}</span>
+                  )}
                 </div>
               )}
 
               {evaluationResult?.bomDetection && (
-                <div style={{ marginTop: tokens.spacing.xs, display: 'flex', gap: tokens.spacing.xs, alignItems: 'center' }}>
-                  <Tag bordered>{t('bomPnp.detectedFormat', { format: evaluationResult.bomDetection.format })}</Tag>
+                <div
+                  style={{
+                    marginTop: tokens.spacing.xs,
+                    display: 'flex',
+                    gap: tokens.spacing.xs,
+                    alignItems: 'center',
+                  }}
+                >
+                  <Tag bordered>
+                    {t('bomPnp.detectedFormat', { format: evaluationResult.bomDetection.format })}
+                  </Tag>
                   {evaluationResult.bomDetection.needsColumnMapping && (
                     <Tag
                       bordered
@@ -1054,13 +1081,24 @@ export const BomPnpPage: React.FC = () => {
                   >
                     {t('bomPnp.uploadFileButton')}
                   </Button>
-                  {pnpFileName && <span style={{ marginInlineStart: tokens.spacing.sm }}>{pnpFileName}</span>}
+                  {pnpFileName && (
+                    <span style={{ marginInlineStart: tokens.spacing.sm }}>{pnpFileName}</span>
+                  )}
                 </div>
               )}
 
               {evaluationResult?.pnpDetection && (
-                <div style={{ marginTop: tokens.spacing.xs, display: 'flex', gap: tokens.spacing.xs, alignItems: 'center' }}>
-                  <Tag bordered>{t('bomPnp.detectedFormat', { format: evaluationResult.pnpDetection.format })}</Tag>
+                <div
+                  style={{
+                    marginTop: tokens.spacing.xs,
+                    display: 'flex',
+                    gap: tokens.spacing.xs,
+                    alignItems: 'center',
+                  }}
+                >
+                  <Tag bordered>
+                    {t('bomPnp.detectedFormat', { format: evaluationResult.pnpDetection.format })}
+                  </Tag>
                   {evaluationResult.pnpDetection.needsColumnMapping && (
                     <Tag
                       bordered
@@ -1078,7 +1116,14 @@ export const BomPnpPage: React.FC = () => {
             </div>
           </div>
 
-          <div style={{ marginTop: tokens.spacing.md, display: 'flex', justifyContent: 'flex-end', gap: tokens.spacing.sm }}>
+          <div
+            style={{
+              marginTop: tokens.spacing.md,
+              display: 'flex',
+              justifyContent: 'flex-end',
+              gap: tokens.spacing.sm,
+            }}
+          >
             <Button
               icon={<ToolOutlined aria-hidden="true" />}
               disabled={!bomText && !pnpText}
@@ -1106,9 +1151,14 @@ export const BomPnpPage: React.FC = () => {
               <Tag
                 bordered
                 style={{
-                  backgroundColor: summary.error_count > 0 ? tokens.colors.errorBg : tokens.colors.publishedBg,
-                  borderColor: summary.error_count > 0 ? tokens.colors.errorBorder : tokens.colors.publishedBorder,
-                  color: summary.error_count > 0 ? tokens.colors.errorText : tokens.colors.publishedText,
+                  backgroundColor:
+                    summary.error_count > 0 ? tokens.colors.errorBg : tokens.colors.publishedBg,
+                  borderColor:
+                    summary.error_count > 0
+                      ? tokens.colors.errorBorder
+                      : tokens.colors.publishedBorder,
+                  color:
+                    summary.error_count > 0 ? tokens.colors.errorText : tokens.colors.publishedText,
                   fontWeight: 600,
                 }}
               >
@@ -1117,18 +1167,23 @@ export const BomPnpPage: React.FC = () => {
               <Tag
                 bordered
                 style={{
-                  backgroundColor: summary.warning_count > 0 ? tokens.colors.warningBg : tokens.colors.draftBg,
-                  borderColor: summary.warning_count > 0 ? tokens.colors.warningBorder : tokens.colors.draftBorder,
-                  color: summary.warning_count > 0 ? tokens.colors.warningText : tokens.colors.draftText,
+                  backgroundColor:
+                    summary.warning_count > 0 ? tokens.colors.warningBg : tokens.colors.draftBg,
+                  borderColor:
+                    summary.warning_count > 0
+                      ? tokens.colors.warningBorder
+                      : tokens.colors.draftBorder,
+                  color:
+                    summary.warning_count > 0 ? tokens.colors.warningText : tokens.colors.draftText,
                   fontWeight: 600,
                 }}
               >
                 {t('bomPnp.summaryWarnings', { count: summary.warning_count })}
               </Tag>
+              <Tag bordered>{t('bomPnp.summaryInfo', { count: summary.info_count })}</Tag>
               <Tag bordered>
-                {t('bomPnp.summaryInfo', { count: summary.info_count })}
+                {t('bomPnp.summaryBomCount', { count: summary.bom_component_count })}
               </Tag>
-              <Tag bordered>{t('bomPnp.summaryBomCount', { count: summary.bom_component_count })}</Tag>
               <Tag bordered>{t('bomPnp.summaryPnpCount', { count: summary.pnp_row_count })}</Tag>
               <Tag bordered>{t('bomPnp.summaryDnpCount', { count: summary.bom_dnp_count })}</Tag>
             </Space>

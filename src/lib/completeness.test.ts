@@ -67,10 +67,7 @@ describe('completeness', () => {
   describe('itemMatchesPattern', () => {
     it('matches by title or file_name case-insensitively', () => {
       expect(
-        itemMatchesPattern(
-          { id: '1', title: 'Mainboard BOM Rev C', file_name: 'bom.csv' },
-          'bom',
-        ),
+        itemMatchesPattern({ id: '1', title: 'Mainboard BOM Rev C', file_name: 'bom.csv' }, 'bom'),
       ).toBe(true);
       expect(
         itemMatchesPattern(
@@ -88,10 +85,7 @@ describe('completeness', () => {
 
     it('returns false when no match', () => {
       expect(
-        itemMatchesPattern(
-          { id: '4', title: 'User Manual', file_name: 'manual.pdf' },
-          'Gerber',
-        ),
+        itemMatchesPattern({ id: '4', title: 'User Manual', file_name: 'manual.pdf' }, 'Gerber'),
       ).toBe(false);
     });
   });
@@ -99,21 +93,13 @@ describe('completeness', () => {
   describe('itemBelongsToCategory', () => {
     it('matches by category_name on item', () => {
       expect(
-        itemBelongsToCategory(
-          { id: '1', category_name: 'Hardware' },
-          'hardware',
-          sampleCategories,
-        ),
+        itemBelongsToCategory({ id: '1', category_name: 'Hardware' }, 'hardware', sampleCategories),
       ).toBe(true);
     });
 
     it('matches by category_id lookup', () => {
       expect(
-        itemBelongsToCategory(
-          { id: '2', category_id: 'cat-test' },
-          'Test',
-          sampleCategories,
-        ),
+        itemBelongsToCategory({ id: '2', category_id: 'cat-test' }, 'Test', sampleCategories),
       ).toBe(true);
     });
   });
@@ -221,4 +207,3 @@ describe('completeness', () => {
     });
   });
 });
-

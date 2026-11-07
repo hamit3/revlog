@@ -141,4 +141,3 @@ describe('BOM & PnP UI search and filtering helpers', () => {
     ).toEqual([samplePnpRows[1]]);
   });
 });
-

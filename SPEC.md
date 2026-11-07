@@ -52,7 +52,7 @@ The MVP (auth, projects, categories, items, release wizard, release history, rel
   - The release wizard "Review" step shows which required items are missing.
   - Default is a warning; the owner can make a rule blocking.
 
-- [ ] 6. **Approval step before publishing**
+- [x] 6. **Approval step before publishing**
   - Optional per-project setting: a release needs approval by a second person (a different member or owner) before it can be published.
   - States: draft, in review, approved, published. Record who approved and when.
   - The approver sees a read-only review screen including check results.

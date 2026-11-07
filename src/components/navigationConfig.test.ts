@@ -224,12 +224,8 @@ describe('Flat Project Menu + In-Page Tabs navigationConfig and switcher helpers
       resolveHeaderTrailingSection('/projects/p1/bom-pnp', 'p1', undefined, translateText)?.label,
     ).toBe('BOM & PnP');
     expect(
-      resolveHeaderTrailingSection(
-        '/projects/p1/products/a1/bom-pnp',
-        'p1',
-        'a1',
-        translateText,
-      )?.label,
+      resolveHeaderTrailingSection('/projects/p1/products/a1/bom-pnp', 'p1', 'a1', translateText)
+        ?.label,
     ).toBe('BOM & PnP');
     expect(
       resolveHeaderTrailingSection(

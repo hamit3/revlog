@@ -12,6 +12,7 @@ import {
   Radio,
   Select,
   Spin,
+  Switch,
   Table,
   Tabs,
   Tag,
@@ -89,6 +90,7 @@ export const ProjectSettingsPage: React.FC = () => {
 
   const [isLoadingData, setIsLoadingData] = useState<boolean>(true);
   const [isSavingGeneral, setIsSavingGeneral] = useState<boolean>(false);
+  const [isSavingApproval, setIsSavingApproval] = useState<boolean>(false);
   const [isMutatingMember, setIsMutatingMember] = useState<boolean>(false);
   const [isMutatingRule, setIsMutatingRule] = useState<boolean>(false);
   const [isArchiving, setIsArchiving] = useState<boolean>(false);
@@ -197,6 +199,27 @@ export const ProjectSettingsPage: React.FC = () => {
     await reloadProject();
     await invalidate({ resource: 'projects', invalidates: ['list', 'detail'] });
     notify?.({ type: 'success', message: t('common.saved') });
+  };
+
+  const handleToggleApproval = async (checked: boolean) => {
+    if (!project || !isOwner || project.archived) {
+      return;
+    }
+    setIsSavingApproval(true);
+    setErrorMessage(null);
+    const { error } = await supabaseClient
+      .from('projects')
+      .update({ require_release_approval: checked })
+      .eq('id', project.id);
+
+    setIsSavingApproval(false);
+    if (error) {
+      setErrorMessage(error.message);
+      notify?.({ type: 'error', message: error.message });
+      return;
+    }
+    notify?.({ type: 'success', message: t('settings.approvalSettingSaved') });
+    await reloadProject();
   };
 
   const handleAddMember = async (values: AddMemberFormValues) => {
@@ -650,6 +673,36 @@ export const ProjectSettingsPage: React.FC = () => {
                     </Button>
                   )}
                 </Form>
+
+                <Card
+                  size="small"
+                  title={t('settings.approvalWorkflowHeading')}
+                  style={{ marginTop: tokens.spacing.lg }}
+                >
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      justifyContent: 'space-between',
+                      gap: tokens.spacing.md,
+                    }}
+                  >
+                    <div style={{ flex: 1 }}>
+                      <Typography.Text strong>{t('settings.requireApprovalLabel')}</Typography.Text>
+                      <div>
+                        <Typography.Text type="secondary">
+                          {t('settings.requireApprovalDescription')}
+                        </Typography.Text>
+                      </div>
+                    </div>
+                    <Switch
+                      checked={Boolean(project.require_release_approval)}
+                      disabled={!isOwner || project.archived || isSavingApproval}
+                      loading={isSavingApproval}
+                      onChange={(checked) => void handleToggleApproval(checked)}
+                    />
+                  </div>
+                </Card>
               </div>
             ),
           },
@@ -852,10 +905,7 @@ export const ProjectSettingsPage: React.FC = () => {
                           />
                         </Form.Item>
 
-                        <Form.Item
-                          label={t('checklist.severityLabel')}
-                          name="severity"
-                        >
+                        <Form.Item label={t('checklist.severityLabel')} name="severity">
                           <Radio.Group>
                             <Radio value="warning">{t('checklist.severityWarning')}</Radio>
                             <Radio value="blocking" disabled={!isOwner}>

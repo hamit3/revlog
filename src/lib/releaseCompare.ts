@@ -351,9 +351,11 @@ export function compareBomParts(
       const valueChanged = normalizeStr(base.value) !== normalizeStr(target.value);
       const footprintChanged = normalizeStr(base.footprint) !== normalizeStr(target.footprint);
       const dnpChanged = Boolean(base.dnp) !== Boolean(target.dnp);
-      const descriptionChanged = normalizeStr(base.description) !== normalizeStr(target.description);
+      const descriptionChanged =
+        normalizeStr(base.description) !== normalizeStr(target.description);
 
-      const hasChange = mpnChanged || valueChanged || footprintChanged || dnpChanged || descriptionChanged;
+      const hasChange =
+        mpnChanged || valueChanged || footprintChanged || dnpChanged || descriptionChanged;
       const status: DiffStatus = hasChange ? 'changed' : 'unchanged';
 
       parts.push({
@@ -467,7 +469,9 @@ export function compareProjectReleases(
   }
 
   // Sort by product name
-  products.sort((a, b) => a.productName.localeCompare(b.productName, undefined, { sensitivity: 'base' }));
+  products.sort((a, b) =>
+    a.productName.localeCompare(b.productName, undefined, { sensitivity: 'base' }),
+  );
 
   const addedCount = products.filter((p) => p.status === 'added').length;
   const removedCount = products.filter((p) => p.status === 'removed').length;

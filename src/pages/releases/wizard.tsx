@@ -27,6 +27,7 @@ import {
   CheckSquareOutlined,
   DeleteOutlined,
   ExclamationCircleOutlined,
+  EyeOutlined,
   FileOutlined,
   FileSearchOutlined,
   InfoCircleOutlined,
@@ -37,11 +38,17 @@ import { tokens } from '../../theme/tokens';
 import { PageHeaderTitle } from '../../components/PageHeaderTitle';
 import { StatusBadge } from '../../components/StatusBadge';
 import { useProductAccess } from '../../lib/useProjectAccess';
-import { formatFileSize, formatReleaseDate } from '../../lib/format';
+import { formatDateTime, formatFileSize, formatReleaseDate } from '../../lib/format';
 import { computeReleaseWarnings, suggestInitialItemIds } from '../../lib/releaseHelpers';
 import { evaluateReleaseCompleteness } from '../../lib/completeness';
 import { supabaseClient } from '../../providers/supabaseClient';
-import type { BomPnpCheckRun, Category, Item, Release, ReleaseChecklistRule } from '../../types/database';
+import type {
+  BomPnpCheckRun,
+  Category,
+  Item,
+  Release,
+  ReleaseChecklistRule,
+} from '../../types/database';
 
 interface StepOneFormValues {
   version_label: string;
@@ -176,7 +183,9 @@ export const ReleaseWizardPage: React.FC = () => {
         const [relRes, relItemsRes] = await Promise.all([
           supabaseClient
             .from('releases')
-            .select('*')
+            .select(
+              '*, profiles:published_by(id, full_name, email, created_at), approved_by_profile:approved_by(id, full_name, email)',
+            )
             .eq('id', releaseId)
             .eq('project_id', projectId)
             .eq('product_id', productId)
@@ -195,7 +204,7 @@ export const ReleaseWizardPage: React.FC = () => {
         }
 
         const loadedRelease = relRes.data as Release;
-        if (loadedRelease.status === 'published') {
+        if (loadedRelease.status !== 'draft') {
           navigate(`/projects/${projectId}/products/${productId}/releases/${loadedRelease.id}`, {
             replace: true,
           });
@@ -418,6 +427,43 @@ export const ReleaseWizardPage: React.FC = () => {
     navigate(`/projects/${projectId}/products/${productId}/releases/${draftRelease.id}`, {
       replace: true,
     });
+  };
+
+  const handleSubmitForReview = async () => {
+    if (!draftRelease || !projectId || !productId) {
+      return;
+    }
+    if (selectedItemIds.length === 0) {
+      setErrorMessage(t('releases.reviewNoItemsError'));
+      return;
+    }
+    if (!completenessEvaluation.canPublish) {
+      setErrorMessage(t('releases.completenessBlockingAlert'));
+      return;
+    }
+
+    setIsSaving(true);
+    setErrorMessage(null);
+
+    const synced = await persistReleaseItems(draftRelease.id, selectedItemIds);
+    if (!synced) {
+      setIsSaving(false);
+      return;
+    }
+
+    const { data, error } = await supabaseClient.rpc('submit_release_for_review', {
+      p_release_id: draftRelease.id,
+    });
+
+    setIsSaving(false);
+
+    if (error || !data) {
+      setErrorMessage(error?.message ?? t('common.errorPrefix'));
+      return;
+    }
+
+    notify?.({ type: 'success', message: t('approval.submittedForReviewSuccess') });
+    navigate(`/projects/${projectId}/products/${productId}/releases/${draftRelease.id}`);
   };
 
   const handleDiscardDraft = async () => {
@@ -828,8 +874,7 @@ export const ReleaseWizardPage: React.FC = () => {
                     marginBottom: tokens.spacing.sm,
                   }}
                 >
-                  {bomPnpRun.summary.error_count === 0 &&
-                  bomPnpRun.summary.warning_count === 0 ? (
+                  {bomPnpRun.summary.error_count === 0 && bomPnpRun.summary.warning_count === 0 ? (
                     <Tag
                       bordered
                       style={{
@@ -838,10 +883,7 @@ export const ReleaseWizardPage: React.FC = () => {
                         color: tokens.colors.publishedText,
                       }}
                     >
-                      <CheckCircleOutlined
-                        aria-hidden="true"
-                        style={{ marginInlineEnd: 4 }}
-                      />
+                      <CheckCircleOutlined aria-hidden="true" style={{ marginInlineEnd: 4 }} />
                       {t('releases.bomPnpCheckPassed')}
                     </Tag>
                   ) : (
@@ -929,10 +971,7 @@ export const ReleaseWizardPage: React.FC = () => {
               </div>
             ) : (
               <div className="revlog-inline-row">
-                <InfoCircleOutlined
-                  aria-hidden="true"
-                  style={{ color: tokens.colors.draftText }}
-                />
+                <InfoCircleOutlined aria-hidden="true" style={{ color: tokens.colors.draftText }} />
                 <Typography.Text type="secondary">
                   {t('releases.bomPnpNoCheckRunYet')}
                 </Typography.Text>
@@ -1060,12 +1099,11 @@ export const ReleaseWizardPage: React.FC = () => {
                         key: 'pattern',
                         render: (_val, record) => (
                           <div>
-                            <Typography.Text strong>{record.rule.item_name_pattern}</Typography.Text>
+                            <Typography.Text strong>
+                              {record.rule.item_name_pattern}
+                            </Typography.Text>
                             {record.rule.description && (
-                              <Typography.Text
-                                type="secondary"
-                                style={{ display: 'block' }}
-                              >
+                              <Typography.Text type="secondary" style={{ display: 'block' }}>
                                 {record.rule.description}
                               </Typography.Text>
                             )}
@@ -1082,9 +1120,7 @@ export const ReleaseWizardPage: React.FC = () => {
                               {t('checklist.severityBlocking')}
                             </Tag>
                           ) : (
-                            <Tag color="warning">
-                              {t('checklist.severityWarning')}
-                            </Tag>
+                            <Tag color="warning">{t('checklist.severityWarning')}</Tag>
                           ),
                       },
                       {
@@ -1093,12 +1129,10 @@ export const ReleaseWizardPage: React.FC = () => {
                         width: 240,
                         render: (_val, record) =>
                           record.satisfied ? (
-                            <Tag
-                              color="success"
-                              icon={<CheckCircleOutlined aria-hidden="true" />}
-                            >
+                            <Tag color="success" icon={<CheckCircleOutlined aria-hidden="true" />}>
                               {t('releases.completenessSatisfied', {
-                                item: record.matchedItem?.title || record.matchedItem?.file_name || '',
+                                item:
+                                  record.matchedItem?.title || record.matchedItem?.file_name || '',
                               })}
                             </Tag>
                           ) : (
@@ -1228,6 +1262,51 @@ export const ReleaseWizardPage: React.FC = () => {
             style={{ marginBottom: tokens.spacing.lg }}
           />
 
+          {/* Approval Workflow State in Step 3 */}
+          {project?.require_release_approval && (
+            <>
+              {draftRelease.status === 'draft' && (
+                <Alert
+                  type="info"
+                  showIcon
+                  icon={<EyeOutlined aria-hidden="true" />}
+                  message={t('approval.needsSecondPersonApproval')}
+                  style={{ marginBottom: tokens.spacing.lg }}
+                />
+              )}
+              {draftRelease.status === 'in_review' && (
+                <Alert
+                  type="warning"
+                  showIcon
+                  icon={<EyeOutlined aria-hidden="true" />}
+                  message={t('approval.inReviewNotice')}
+                  description={t('approval.waitingForReviewer')}
+                  style={{ marginBottom: tokens.spacing.lg }}
+                />
+              )}
+              {draftRelease.status === 'approved' && (
+                <Alert
+                  type="success"
+                  showIcon
+                  icon={<CheckCircleOutlined aria-hidden="true" />}
+                  message={t('approval.readyToPublish')}
+                  description={
+                    draftRelease.approved_at
+                      ? t('approval.approvedBanner', {
+                          name:
+                            draftRelease.approved_by_profile?.full_name ||
+                            draftRelease.approved_by_profile?.email ||
+                            t('common.unknownUser'),
+                          date: formatDateTime(draftRelease.approved_at),
+                        })
+                      : undefined
+                  }
+                  style={{ marginBottom: tokens.spacing.lg }}
+                />
+              )}
+            </>
+          )}
+
           <Space size={tokens.spacing.sm}>
             <Button
               icon={<ArrowLeftOutlined aria-hidden="true" />}
@@ -1236,15 +1315,52 @@ export const ReleaseWizardPage: React.FC = () => {
             >
               {t('common.previous')}
             </Button>
-            <Button
-              type="primary"
-              icon={<LockOutlined aria-hidden="true" />}
-              loading={isSaving}
-              disabled={selectedItems.length === 0 || !completenessEvaluation.canPublish}
-              onClick={() => void handlePublish()}
-            >
-              {t('releases.publishButton')}
-            </Button>
+
+            {project?.require_release_approval ? (
+              draftRelease.status === 'draft' ? (
+                <Button
+                  type="primary"
+                  icon={<EyeOutlined aria-hidden="true" />}
+                  loading={isSaving}
+                  disabled={selectedItems.length === 0 || !completenessEvaluation.canPublish}
+                  onClick={() => void handleSubmitForReview()}
+                >
+                  {t('approval.submitForReview')}
+                </Button>
+              ) : draftRelease.status === 'in_review' ? (
+                <Button
+                  type="primary"
+                  icon={<ArrowRightOutlined aria-hidden="true" />}
+                  onClick={() =>
+                    navigate(
+                      `/projects/${projectId}/products/${productId}/releases/${draftRelease.id}`,
+                    )
+                  }
+                >
+                  {t('releases.reviewRelease')}
+                </Button>
+              ) : (
+                <Button
+                  type="primary"
+                  icon={<LockOutlined aria-hidden="true" />}
+                  loading={isSaving}
+                  disabled={selectedItems.length === 0 || !completenessEvaluation.canPublish}
+                  onClick={() => void handlePublish()}
+                >
+                  {t('releases.publishButton')}
+                </Button>
+              )
+            ) : (
+              <Button
+                type="primary"
+                icon={<LockOutlined aria-hidden="true" />}
+                loading={isSaving}
+                disabled={selectedItems.length === 0 || !completenessEvaluation.canPublish}
+                onClick={() => void handlePublish()}
+              >
+                {t('releases.publishButton')}
+              </Button>
+            )}
           </Space>
         </Card>
       )}

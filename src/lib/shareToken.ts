@@ -33,4 +33,3 @@ export function buildShareUrl(token: string, origin?: string): string {
       : '');
   return `${base}/share/${encodeURIComponent(token.trim())}`;
 }
-

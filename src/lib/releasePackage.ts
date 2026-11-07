@@ -88,7 +88,8 @@ export function sanitizeZipRelativePath(categoryName: string, fileName: string):
     .replace(/\.{2,}/g, '_')
     .trim();
 
-  const safeFileName = cleanFileName.length > 0 && cleanFileName !== '_' ? cleanFileName : 'file.bin';
+  const safeFileName =
+    cleanFileName.length > 0 && cleanFileName !== '_' ? cleanFileName : 'file.bin';
 
   if (!cleanCategory || cleanCategory === '_') {
     return safeFileName;

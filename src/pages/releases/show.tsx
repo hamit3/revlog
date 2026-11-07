@@ -1,12 +1,15 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router';
-import { useNotification, useTranslate } from '@refinedev/core';
+import { useGetIdentity, useNotification, useTranslate } from '@refinedev/core';
 import { Show } from '@refinedev/antd';
 import {
   Alert,
   Button,
   Card,
   Descriptions,
+  Input,
+  Modal,
+  Popconfirm,
   Space,
   Spin,
   Table,
@@ -17,13 +20,18 @@ import {
 import type { ColumnsType } from 'antd/es/table';
 import {
   CheckCircleOutlined,
+  CheckSquareOutlined,
+  CloseCircleOutlined,
   CopyOutlined,
   DownloadOutlined,
   ExclamationCircleOutlined,
+  EyeOutlined,
   FileOutlined,
   FileSearchOutlined,
   HistoryOutlined,
   LinkOutlined,
+  LockOutlined,
+  SafetyCertificateOutlined,
   ShareAltOutlined,
 } from '@ant-design/icons';
 import { tokens } from '../../theme/tokens';
@@ -34,6 +42,7 @@ import { useProductAccess } from '../../lib/useProjectAccess';
 import { formatDateTime, formatFileSize } from '../../lib/format';
 import { computeManifestHash } from '../../lib/manifestHash';
 import { groupReleaseItemsByCategory } from '../../lib/releaseHelpers';
+import { evaluateReleaseCompleteness } from '../../lib/completeness';
 import {
   buildReleasePackageManifest,
   buildReleasePackageZip,
@@ -45,7 +54,12 @@ import {
   triggerSignedFileDownload,
 } from '../../lib/storage';
 import { supabaseClient } from '../../providers/supabaseClient';
-import type { BomPnpCheckRun, Release, ReleaseItem } from '../../types/database';
+import type {
+  BomPnpCheckRun,
+  Release,
+  ReleaseChecklistRule,
+  ReleaseItem,
+} from '../../types/database';
 
 export const ReleaseShowPage: React.FC = () => {
   const t = useTranslate();
@@ -63,8 +77,16 @@ export const ReleaseShowPage: React.FC = () => {
     isLoading: isAccessLoading,
   } = useProductAccess(projectId, productId);
 
+  const { data: identity } = useGetIdentity<{
+    id: string;
+    email?: string;
+    full_name?: string;
+  }>();
+  const currentUserId = identity?.id;
+
   const [release, setRelease] = useState<Release | null>(null);
   const [releaseItems, setReleaseItems] = useState<ReleaseItem[]>([]);
+  const [checklistRules, setChecklistRules] = useState<ReleaseChecklistRule[]>([]);
   const [verifiedHash, setVerifiedHash] = useState<boolean | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -75,6 +97,14 @@ export const ReleaseShowPage: React.FC = () => {
   const [packagingStatus, setPackagingStatus] = useState<string | null>(null);
   const [isShareModalOpen, setIsShareModalOpen] = useState<boolean>(false);
 
+  const [isApproveModalOpen, setIsApproveModalOpen] = useState<boolean>(false);
+  const [isRejectModalOpen, setIsRejectModalOpen] = useState<boolean>(false);
+  const [approvalNotes, setApprovalNotes] = useState<string>('');
+  const [rejectionNotes, setRejectionNotes] = useState<string>('');
+  const [isActionLoading, setIsActionLoading] = useState<boolean>(false);
+
+  const [refreshIndex, setRefreshIndex] = useState<number>(0);
+
   useEffect(() => {
     let active = true;
     void (async () => {
@@ -84,10 +114,12 @@ export const ReleaseShowPage: React.FC = () => {
       setIsLoading(true);
       setErrorMessage(null);
 
-      const [relRes, itemsRes, checkRunRes] = await Promise.all([
+      const [relRes, itemsRes, checkRunRes, rulesRes] = await Promise.all([
         supabaseClient
           .from('releases')
-          .select('*, profiles:published_by(id, full_name, email, created_at)')
+          .select(
+            '*, profiles:published_by(id, full_name, email, created_at), submitted_by_profile:submitted_for_review_by(id, full_name, email), approved_by_profile:approved_by(id, full_name, email)',
+          )
           .eq('id', releaseId)
           .eq('project_id', projectId)
           .eq('product_id', productId)
@@ -100,6 +132,11 @@ export const ReleaseShowPage: React.FC = () => {
           .order('created_at', { ascending: false })
           .limit(1)
           .maybeSingle(),
+        supabaseClient
+          .from('release_checklist_rules')
+          .select('*')
+          .eq('project_id', projectId)
+          .order('created_at', { ascending: true }),
       ]);
 
       if (!active) {
@@ -114,14 +151,16 @@ export const ReleaseShowPage: React.FC = () => {
 
       const loadedRelease = relRes.data as Release;
       const loadedItems = (itemsRes.data as ReleaseItem[]) ?? [];
+      const loadedRules = (rulesRes.data as ReleaseChecklistRule[]) ?? [];
       setRelease(loadedRelease);
       setReleaseItems(loadedItems);
+      setChecklistRules(loadedRules);
+
       if (checkRunRes.data) {
         setBomPnpRun(checkRunRes.data as BomPnpCheckRun);
       } else {
         setBomPnpRun(null);
       }
-      setReleaseItems(loadedItems);
 
       if (loadedRelease.status === 'published' && loadedRelease.manifest_hash) {
         const computed = await computeManifestHash(
@@ -140,6 +179,8 @@ export const ReleaseShowPage: React.FC = () => {
         if (active) {
           setVerifiedHash(computed === loadedRelease.manifest_hash);
         }
+      } else {
+        setVerifiedHash(null);
       }
 
       setIsLoading(false);
@@ -148,7 +189,7 @@ export const ReleaseShowPage: React.FC = () => {
     return () => {
       active = false;
     };
-  }, [projectId, productId, releaseId, t]);
+  }, [projectId, productId, releaseId, refreshIndex, t]);
 
   useEffect(() => {
     if (release?.version_label) {
@@ -163,7 +204,29 @@ export const ReleaseShowPage: React.FC = () => {
     [releaseItems],
   );
 
+  const completenessCategories = useMemo(
+    () => groupedCategories.map((g) => ({ id: g.categoryName, name: g.categoryName })),
+    [groupedCategories],
+  );
+
+  const completenessEvaluation = useMemo(() => {
+    return evaluateReleaseCompleteness(checklistRules, completenessCategories, releaseItems);
+  }, [checklistRules, completenessCategories, releaseItems]);
+
   const hasLinkItems = useMemo(() => releaseItems.some((ri) => ri.kind === 'link'), [releaseItems]);
+
+  const isAuthorOrSubmitter = Boolean(
+    currentUserId &&
+    release &&
+    (currentUserId === release.submitted_for_review_by ||
+      (release.created_by && currentUserId === release.created_by)),
+  );
+
+  const isPublished = release?.status === 'published';
+  const isInReview = release?.status === 'in_review';
+  const isApproved = release?.status === 'approved';
+
+  const productBase = project && product ? `/projects/${project.id}/products/${product.id}` : '';
 
   const handleCopy = async (key: string, text: string) => {
     try {
@@ -204,11 +267,12 @@ export const ReleaseShowPage: React.FC = () => {
     );
 
     setIsPackaging(true);
-    setPackagingStatus(
-      t('releases.packagingProgress', { current: 0, total: fileItems.length }),
-    );
+    setPackagingStatus(t('releases.packagingProgress', { current: 0, total: fileItems.length }));
 
     try {
+      const publisherName =
+        release.profiles?.full_name || release.profiles?.email || t('common.unknownUser');
+
       const manifest = await buildReleasePackageManifest({
         release,
         releaseItems,
@@ -220,12 +284,11 @@ export const ReleaseShowPage: React.FC = () => {
       const pathMap = mapReleaseItemsToZipPaths(releaseItems);
       const downloadedFiles: Array<{ path: string; data: Uint8Array }> = [];
 
-      for (let i = 0; i < fileItems.length; i += 1) {
+      for (let i = 0; i < fileItems.length; i++) {
         const item = fileItems[i]!;
         setPackagingStatus(
           t('releases.packagingProgress', { current: i + 1, total: fileItems.length }),
         );
-
         const safePath = pathMap.get(item.id) ?? item.file_name ?? 'file.bin';
         const fileBytes = await downloadProjectFileBytes(item.storage_path!);
         downloadedFiles.push({
@@ -234,19 +297,18 @@ export const ReleaseShowPage: React.FC = () => {
         });
       }
 
+      setPackagingStatus(t('releases.packagingBuildingZip'));
       const zipBytes = buildReleasePackageZip({
         manifest,
         files: downloadedFiles,
       });
 
-      const productPrefix = product.code || product.name;
-      const cleanPrefix = productPrefix.replace(/[^\w.-]+/g, '_');
-      const cleanVersion = release.version_label.replace(/[^\w.-]+/g, '_');
-      const zipFileName = `${cleanPrefix}-${cleanVersion}.zip`;
+      const cleanPrefix = (product.code || product.name).replace(/[^a-zA-Z0-9._-]/g, '_');
+      const cleanVersion = release.version_label.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const filename = `${cleanPrefix}-${cleanVersion}.zip`;
 
       const blob = new Blob([zipBytes.buffer as ArrayBuffer], { type: 'application/zip' });
-      triggerBlobDownload(blob, zipFileName);
-
+      triggerBlobDownload(blob, filename);
       notify?.({
         type: 'success',
         message: t('releases.downloadPackageSuccess'),
@@ -262,10 +324,76 @@ export const ReleaseShowPage: React.FC = () => {
     }
   };
 
-  if (isAccessLoading || isLoading) {
+  const handleApprove = async () => {
+    if (!release) return;
+    setIsActionLoading(true);
+    const { error } = await supabaseClient.rpc('approve_release', {
+      p_release_id: release.id,
+      p_notes: approvalNotes.trim() || null,
+    });
+    setIsActionLoading(false);
+    if (error) {
+      notify?.({ type: 'error', message: error.message });
+      return;
+    }
+    notify?.({ type: 'success', message: t('approval.approvedSuccess') });
+    setIsApproveModalOpen(false);
+    setApprovalNotes('');
+    setRefreshIndex((prev) => prev + 1);
+  };
+
+  const handleReject = async () => {
+    if (!release || !productBase) return;
+    setIsActionLoading(true);
+    const { error } = await supabaseClient.rpc('reject_release', {
+      p_release_id: release.id,
+      p_notes: rejectionNotes.trim() || null,
+    });
+    setIsActionLoading(false);
+    if (error) {
+      notify?.({ type: 'error', message: error.message });
+      return;
+    }
+    notify?.({ type: 'success', message: t('approval.changesRequestedSuccess') });
+    setIsRejectModalOpen(false);
+    setRejectionNotes('');
+    navigate(`${productBase}/releases/${release.id}/edit`);
+  };
+
+  const handleCancelReview = async () => {
+    if (!release || !productBase) return;
+    setIsActionLoading(true);
+    const { error } = await supabaseClient.rpc('cancel_release_review', {
+      p_release_id: release.id,
+    });
+    setIsActionLoading(false);
+    if (error) {
+      notify?.({ type: 'error', message: error.message });
+      return;
+    }
+    notify?.({ type: 'success', message: t('approval.reviewCancelledSuccess') });
+    navigate(`${productBase}/releases/${release.id}/edit`);
+  };
+
+  const handlePublish = async () => {
+    if (!release) return;
+    setIsActionLoading(true);
+    const { error } = await supabaseClient.rpc('publish_release', {
+      p_release_id: release.id,
+    });
+    setIsActionLoading(false);
+    if (error) {
+      notify?.({ type: 'error', message: error.message });
+      return;
+    }
+    notify?.({ type: 'success', message: t('releases.publishedSuccess') });
+    setRefreshIndex((prev) => prev + 1);
+  };
+
+  if (isLoading || isAccessLoading) {
     return (
-      <div style={{ padding: tokens.spacing.xxl, textAlign: 'center' }}>
-        <Spin />
+      <div style={{ padding: tokens.spacing.xl, textAlign: 'center' }}>
+        <Spin size="large" />
       </div>
     );
   }
@@ -274,14 +402,20 @@ export const ReleaseShowPage: React.FC = () => {
     return <Alert type="error" showIcon message={errorMessage ?? t('products.notFound')} />;
   }
 
-  const productBase = `/projects/${project.id}/products/${product.id}`;
-
   if (release.status === 'draft') {
     return <Navigate to={`${productBase}/releases/${release.id}/edit`} replace />;
   }
 
   const publisherName =
     release.profiles?.full_name || release.profiles?.email || t('common.unknownUser');
+  const submitterName =
+    release.submitted_by_profile?.full_name ||
+    release.submitted_by_profile?.email ||
+    t('common.unknownUser');
+  const approverName =
+    release.approved_by_profile?.full_name ||
+    release.approved_by_profile?.email ||
+    t('common.unknownUser');
 
   const itemColumns: ColumnsType<ReleaseItem> = [
     {
@@ -418,8 +552,14 @@ export const ReleaseShowPage: React.FC = () => {
       title={
         <PageHeaderTitle
           title={release.version_label}
-          subtitle={`${project.name} / ${product.name} · ${t('releases.detailSubtitle')}`}
-          badge={<StatusBadge kind="published" />}
+          subtitle={`${project.name} / ${product.name} · ${
+            isPublished
+              ? t('releases.detailSubtitle')
+              : isInReview
+                ? t('approval.inReviewNotice')
+                : t('approval.readyToPublish')
+          }`}
+          badge={<StatusBadge kind={release.status} />}
         />
       }
       headerProps={{
@@ -427,23 +567,39 @@ export const ReleaseShowPage: React.FC = () => {
       }}
       headerButtons={() => (
         <Space size="small">
-          <Button
-            type="primary"
-            icon={<DownloadOutlined aria-hidden="true" />}
-            loading={isPackaging}
-            aria-label={t('releases.downloadPackageAria', { version: release.version_label })}
-            onClick={() => void handleDownloadPackage()}
-          >
-            {isPackaging
-              ? packagingStatus || t('releases.downloadPackage')
-              : t('releases.downloadPackage')}
-          </Button>
-          {canEditContent && (
+          {isPublished && (
+            <>
+              <Button
+                type="primary"
+                icon={<DownloadOutlined aria-hidden="true" />}
+                loading={isPackaging}
+                aria-label={t('releases.downloadPackageAria', {
+                  version: release.version_label,
+                })}
+                onClick={() => void handleDownloadPackage()}
+              >
+                {isPackaging
+                  ? packagingStatus || t('releases.downloadPackage')
+                  : t('releases.downloadPackage')}
+              </Button>
+              {canEditContent && (
+                <Button
+                  icon={<ShareAltOutlined aria-hidden="true" />}
+                  onClick={() => setIsShareModalOpen(true)}
+                >
+                  {t('share.button')}
+                </Button>
+              )}
+            </>
+          )}
+          {isApproved && canEditContent && (
             <Button
-              icon={<ShareAltOutlined aria-hidden="true" />}
-              onClick={() => setIsShareModalOpen(true)}
+              type="primary"
+              icon={<LockOutlined aria-hidden="true" />}
+              loading={isActionLoading}
+              onClick={() => void handlePublish()}
             >
-              {t('share.button')}
+              {t('releases.publishButton')}
             </Button>
           )}
           <Button
@@ -460,7 +616,193 @@ export const ReleaseShowPage: React.FC = () => {
         styles: { body: { padding: 0 } },
       }}
     >
-      {/* Read-only Locked Metadata Card */}
+      {/* Approval & Review Workflow Banners */}
+      {isInReview && (
+        <Card
+          style={{
+            marginBottom: tokens.spacing.lg,
+            backgroundColor: isAuthorOrSubmitter
+              ? tokens.colors.surfaceSubtle
+              : tokens.colors.warningBg,
+            borderColor: isAuthorOrSubmitter ? tokens.colors.border : tokens.colors.warningBorder,
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: tokens.spacing.md,
+            }}
+          >
+            <div>
+              <div className="revlog-inline-row">
+                <EyeOutlined
+                  aria-hidden="true"
+                  style={{
+                    color: isAuthorOrSubmitter ? tokens.colors.accent : tokens.colors.warningText,
+                  }}
+                />
+                <Typography.Text
+                  strong
+                  style={{
+                    color: isAuthorOrSubmitter
+                      ? tokens.colors.textPrimary
+                      : tokens.colors.warningText,
+                  }}
+                >
+                  {t('approval.inReviewNotice')}
+                </Typography.Text>
+              </div>
+              <div
+                style={{
+                  marginTop: tokens.spacing.xs,
+                  color: tokens.colors.textSecondary,
+                }}
+              >
+                {isAuthorOrSubmitter
+                  ? t('approval.waitingForReviewer')
+                  : t('approval.needsSecondPersonApproval')}
+              </div>
+              {isAuthorOrSubmitter && (
+                <div
+                  style={{
+                    marginTop: tokens.spacing.xs,
+                    color: tokens.colors.textSecondary,
+                  }}
+                >
+                  {t('approval.selfApprovalForbidden')}
+                </div>
+              )}
+              {release.submitted_by_profile && (
+                <div
+                  style={{
+                    marginTop: tokens.spacing.xs,
+                    color: tokens.colors.textSecondary,
+                  }}
+                >
+                  {t('releases.submittedByLabel')}: {submitterName}
+                  {release.submitted_for_review_at &&
+                    ` · ${formatDateTime(release.submitted_for_review_at)}`}
+                </div>
+              )}
+            </div>
+
+            {canEditContent && (
+              <Space size="small">
+                {isAuthorOrSubmitter ? (
+                  <Popconfirm
+                    title={t('approval.cancelReviewButton')}
+                    description={t('approval.reviewCancelledSuccess')}
+                    onConfirm={() => void handleCancelReview()}
+                  >
+                    <Button
+                      danger
+                      icon={<CloseCircleOutlined aria-hidden="true" />}
+                      loading={isActionLoading}
+                    >
+                      {t('approval.cancelReviewButton')}
+                    </Button>
+                  </Popconfirm>
+                ) : (
+                  <>
+                    <Button
+                      danger
+                      icon={<CloseCircleOutlined aria-hidden="true" />}
+                      onClick={() => setIsRejectModalOpen(true)}
+                    >
+                      {t('approval.requestChangesButton')}
+                    </Button>
+                    <Button
+                      type="primary"
+                      icon={<SafetyCertificateOutlined aria-hidden="true" />}
+                      onClick={() => setIsApproveModalOpen(true)}
+                    >
+                      {t('approval.approveButton')}
+                    </Button>
+                  </>
+                )}
+              </Space>
+            )}
+          </div>
+        </Card>
+      )}
+
+      {isApproved && (
+        <Card
+          style={{
+            marginBottom: tokens.spacing.lg,
+            backgroundColor: tokens.colors.publishedBg,
+            borderColor: tokens.colors.publishedBorder,
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: tokens.spacing.md,
+            }}
+          >
+            <div>
+              <div className="revlog-inline-row">
+                <CheckCircleOutlined
+                  aria-hidden="true"
+                  style={{ color: tokens.colors.publishedText }}
+                />
+                <Typography.Text strong style={{ color: tokens.colors.publishedText }}>
+                  {t('approval.readyToPublish')}
+                </Typography.Text>
+              </div>
+              <div
+                style={{
+                  marginTop: tokens.spacing.xs,
+                  color: tokens.colors.textSecondary,
+                }}
+              >
+                {t('approval.approvedBanner', {
+                  name: approverName,
+                  date: formatDateTime(release.approved_at),
+                })}
+              </div>
+              {release.approval_notes && (
+                <div
+                  style={{
+                    marginTop: tokens.spacing.xs,
+                    color: tokens.colors.textSecondary,
+                  }}
+                >
+                  {t('releases.approvalNotesHeading')}: {release.approval_notes}
+                </div>
+              )}
+            </div>
+
+            {canEditContent && (
+              <Space size="small">
+                <Button
+                  danger
+                  icon={<CloseCircleOutlined aria-hidden="true" />}
+                  onClick={() => setIsRejectModalOpen(true)}
+                >
+                  {t('approval.requestChangesButton')}
+                </Button>
+                <Button
+                  type="primary"
+                  icon={<LockOutlined aria-hidden="true" />}
+                  loading={isActionLoading}
+                  onClick={() => void handlePublish()}
+                >
+                  {t('releases.publishButton')}
+                </Button>
+              </Space>
+            )}
+          </div>
+        </Card>
+      )}
+
+      {/* Metadata Card */}
       <Card style={{ marginBottom: tokens.spacing.lg }}>
         <Descriptions
           bordered
@@ -477,16 +819,48 @@ export const ReleaseShowPage: React.FC = () => {
                 </div>
               ),
             },
-            {
-              key: 'publishedAt',
-              label: t('releases.publishedAtLabel'),
-              children: formatDateTime(release.published_at),
-            },
-            {
-              key: 'publishedBy',
-              label: t('releases.publishedByLabel'),
-              children: publisherName,
-            },
+            ...(isPublished
+              ? [
+                  {
+                    key: 'publishedAt',
+                    label: t('releases.publishedAtLabel'),
+                    children: formatDateTime(release.published_at),
+                  },
+                  {
+                    key: 'publishedBy',
+                    label: t('releases.publishedByLabel'),
+                    children: publisherName,
+                  },
+                ]
+              : []),
+            ...(isInReview
+              ? [
+                  {
+                    key: 'submittedAt',
+                    label: t('releases.submittedAtLabel'),
+                    children: formatDateTime(release.submitted_for_review_at),
+                  },
+                  {
+                    key: 'submittedBy',
+                    label: t('releases.submittedByLabel'),
+                    children: submitterName,
+                  },
+                ]
+              : []),
+            ...(isApproved
+              ? [
+                  {
+                    key: 'approvedAt',
+                    label: t('releases.approvedAtLabel'),
+                    children: formatDateTime(release.approved_at),
+                  },
+                  {
+                    key: 'approvedBy',
+                    label: t('releases.approvedByLabel'),
+                    children: approverName,
+                  },
+                ]
+              : []),
             {
               key: 'counts',
               label: t('releases.contentsHeading'),
@@ -494,7 +868,9 @@ export const ReleaseShowPage: React.FC = () => {
                 <div className="revlog-inline-row">
                   <Tag bordered>{t('releases.artifactCount', { count: releaseItems.length })}</Tag>
                   <Tag bordered>
-                    {t('releases.categoryCount', { count: groupedCategories.length })}
+                    {t('releases.categoryCount', {
+                      count: groupedCategories.length,
+                    })}
                   </Tag>
                 </div>
               ),
@@ -574,6 +950,23 @@ export const ReleaseShowPage: React.FC = () => {
                   },
                 ]
               : []),
+            ...(isApproved && release.approval_notes
+              ? [
+                  {
+                    key: 'approval_notes',
+                    label: t('releases.approvalNotesHeading'),
+                    span: 2,
+                    children: (
+                      <span
+                        className="revlog-prose"
+                        style={{ display: 'block', whiteSpace: 'pre-wrap' }}
+                      >
+                        {release.approval_notes}
+                      </span>
+                    ),
+                  },
+                ]
+              : []),
           ]}
         />
       </Card>
@@ -642,10 +1035,14 @@ export const ReleaseShowPage: React.FC = () => {
               </Tag>
             )}
             <Tag bordered>
-              {t('bomPnp.summaryBomCount', { count: bomPnpRun.summary.bom_component_count })}
+              {t('bomPnp.summaryBomCount', {
+                count: bomPnpRun.summary.bom_component_count,
+              })}
             </Tag>
             <Tag bordered>
-              {t('bomPnp.summaryPnpCount', { count: bomPnpRun.summary.pnp_row_count })}
+              {t('bomPnp.summaryPnpCount', {
+                count: bomPnpRun.summary.pnp_row_count,
+              })}
             </Tag>
             {(bomPnpRun.bom_file_name || bomPnpRun.pnp_file_name) && (
               <Typography.Text type="secondary">
@@ -658,6 +1055,159 @@ export const ReleaseShowPage: React.FC = () => {
           </div>
         </Card>
       )}
+
+      {/* Completeness Checklist Card */}
+      <Card
+        title={
+          <span className="revlog-inline-row">
+            <CheckSquareOutlined aria-hidden="true" />
+            <span>{t('releases.completenessCardHeading')}</span>
+            {checklistRules.length > 0 && (
+              <span className="revlog-count-pill">{checklistRules.length}</span>
+            )}
+          </span>
+        }
+        style={{ marginBottom: tokens.spacing.lg }}
+      >
+        {checklistRules.length === 0 ? (
+          <Typography.Text type="secondary">{t('releases.completenessNoRules')}</Typography.Text>
+        ) : (
+          <div>
+            {completenessEvaluation.blockingMissingCount > 0 ? (
+              <Alert
+                type="error"
+                showIcon
+                icon={<LockOutlined aria-hidden="true" />}
+                message={t('releases.completenessBlockingAlert')}
+                style={{ marginBottom: tokens.spacing.md }}
+              />
+            ) : completenessEvaluation.warningMissingCount > 0 ? (
+              <Alert
+                type="warning"
+                showIcon
+                icon={<ExclamationCircleOutlined aria-hidden="true" />}
+                message={t('releases.completenessWarningNotice', {
+                  count: completenessEvaluation.warningMissingCount,
+                })}
+                style={{ marginBottom: tokens.spacing.md }}
+              />
+            ) : (
+              <Alert
+                type="success"
+                showIcon
+                icon={<CheckCircleOutlined aria-hidden="true" />}
+                message={t('releases.completenessAllPassed', {
+                  count: checklistRules.length,
+                })}
+                style={{ marginBottom: tokens.spacing.md }}
+              />
+            )}
+
+            <div className="revlog-table-region" tabIndex={0}>
+              <Table
+                rowKey={(r) => r.rule.id}
+                size="small"
+                pagination={false}
+                dataSource={completenessEvaluation.results}
+                columns={[
+                  {
+                    title: t('checklist.categoryLabel'),
+                    key: 'category',
+                    width: 140,
+                    render: (_val, record) => <Tag bordered>{record.rule.category_name}</Tag>,
+                  },
+                  {
+                    title: t('checklist.patternLabel'),
+                    key: 'pattern',
+                    render: (_val, record) => (
+                      <div>
+                        <Typography.Text strong>{record.rule.item_name_pattern}</Typography.Text>
+                        {record.rule.description && (
+                          <Typography.Text type="secondary" style={{ display: 'block' }}>
+                            {record.rule.description}
+                          </Typography.Text>
+                        )}
+                      </div>
+                    ),
+                  },
+                  {
+                    title: t('checklist.severityLabel'),
+                    key: 'severity',
+                    width: 140,
+                    render: (_val, record) =>
+                      record.rule.severity === 'blocking' ? (
+                        <Tag
+                          bordered
+                          style={{
+                            backgroundColor: tokens.colors.errorBg,
+                            borderColor: tokens.colors.errorBorder,
+                            color: tokens.colors.errorText,
+                          }}
+                        >
+                          {t('checklist.severityBlocking')}
+                        </Tag>
+                      ) : (
+                        <Tag
+                          bordered
+                          style={{
+                            backgroundColor: tokens.colors.warningBg,
+                            borderColor: tokens.colors.warningBorder,
+                            color: tokens.colors.warningText,
+                          }}
+                        >
+                          {t('checklist.severityWarning')}
+                        </Tag>
+                      ),
+                  },
+                  {
+                    title: t('checklist.statusLabel'),
+                    key: 'status',
+                    width: 140,
+                    render: (_val, record) =>
+                      record.satisfied ? (
+                        <Tag
+                          bordered
+                          style={{
+                            backgroundColor: tokens.colors.publishedBg,
+                            borderColor: tokens.colors.publishedBorder,
+                            color: tokens.colors.publishedText,
+                          }}
+                        >
+                          <CheckCircleOutlined aria-hidden="true" style={{ marginInlineEnd: 4 }} />
+                          {t('checklist.statusPassed')}
+                        </Tag>
+                      ) : (
+                        <Tag
+                          bordered
+                          style={{
+                            backgroundColor:
+                              record.rule.severity === 'blocking'
+                                ? tokens.colors.errorBg
+                                : tokens.colors.warningBg,
+                            borderColor:
+                              record.rule.severity === 'blocking'
+                                ? tokens.colors.errorBorder
+                                : tokens.colors.warningBorder,
+                            color:
+                              record.rule.severity === 'blocking'
+                                ? tokens.colors.errorText
+                                : tokens.colors.warningText,
+                          }}
+                        >
+                          <ExclamationCircleOutlined
+                            aria-hidden="true"
+                            style={{ marginInlineEnd: 4 }}
+                          />
+                          {t('checklist.statusMissing')}
+                        </Tag>
+                      ),
+                  },
+                ]}
+              />
+            </div>
+          </div>
+        )}
+      </Card>
 
       {/* Release Contents Grouped by Module */}
       <Typography.Title level={2} style={{ marginBottom: tokens.spacing.md }}>
@@ -694,6 +1244,54 @@ export const ReleaseShowPage: React.FC = () => {
           {t('items.linkUnverifiedNote')}
         </div>
       )}
+
+      {/* Confirmation Modals */}
+      <Modal
+        open={isApproveModalOpen}
+        title={t('approval.approveButton')}
+        okText={t('approval.approveButton')}
+        cancelText={t('common.cancel')}
+        confirmLoading={isActionLoading}
+        onCancel={() => setIsApproveModalOpen(false)}
+        onOk={() => void handleApprove()}
+      >
+        <div style={{ marginTop: tokens.spacing.sm }}>
+          <div style={{ marginBottom: tokens.spacing.xs }}>
+            <Typography.Text strong>{t('approval.approvalNotesLabel')}</Typography.Text>
+          </div>
+          <Input.TextArea
+            rows={3}
+            value={approvalNotes}
+            onChange={(e) => setApprovalNotes(e.target.value)}
+            placeholder={t('approval.approvalNotesPlaceholder')}
+            maxLength={500}
+          />
+        </div>
+      </Modal>
+
+      <Modal
+        open={isRejectModalOpen}
+        title={t('approval.requestChangesButton')}
+        okText={t('approval.requestChangesButton')}
+        okButtonProps={{ danger: true }}
+        cancelText={t('common.cancel')}
+        confirmLoading={isActionLoading}
+        onCancel={() => setIsRejectModalOpen(false)}
+        onOk={() => void handleReject()}
+      >
+        <div style={{ marginTop: tokens.spacing.sm }}>
+          <div style={{ marginBottom: tokens.spacing.xs }}>
+            <Typography.Text strong>{t('approval.rejectionNotesLabel')}</Typography.Text>
+          </div>
+          <Input.TextArea
+            rows={3}
+            value={rejectionNotes}
+            onChange={(e) => setRejectionNotes(e.target.value)}
+            placeholder={t('approval.rejectionNotesPlaceholder')}
+            maxLength={500}
+          />
+        </div>
+      </Modal>
 
       <ShareLinkModal
         open={isShareModalOpen}

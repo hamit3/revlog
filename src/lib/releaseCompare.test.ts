@@ -171,7 +171,11 @@ describe('Deterministic release comparison domain engine', () => {
       expect(changedUrl?.fieldChanges?.sha256Changed).toBe(false);
 
       // Verify category grouping and sorting
-      expect(result.groups.map((g) => g.categoryName)).toEqual(['Hardware', 'Firmware', 'Documentation']);
+      expect(result.groups.map((g) => g.categoryName)).toEqual([
+        'Hardware',
+        'Firmware',
+        'Documentation',
+      ]);
     });
   });
 

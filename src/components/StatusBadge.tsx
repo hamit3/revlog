@@ -1,15 +1,17 @@
 import React from 'react';
 import {
   CheckCircleOutlined,
+  EyeOutlined,
   FileTextOutlined,
   InboxOutlined,
   LockOutlined,
+  SafetyCertificateOutlined,
 } from '@ant-design/icons';
 import { Tag } from 'antd';
 import { useTranslate } from '@refinedev/core';
 import { tokens } from '../theme/tokens';
 
-export type BadgeKind = 'published' | 'draft' | 'archived' | 'latest';
+export type BadgeKind = 'published' | 'draft' | 'archived' | 'latest' | 'in_review' | 'approved';
 
 export interface StatusBadgeProps {
   kind: BadgeKind;
@@ -55,6 +57,20 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({ kind }) => {
       text: tokens.colors.accent,
       label: t('status.latest'),
       icon: <CheckCircleOutlined aria-hidden="true" />,
+    },
+    in_review: {
+      bg: tokens.colors.warningBg,
+      border: tokens.colors.warningBorder,
+      text: tokens.colors.warningText,
+      label: t('status.inReview'),
+      icon: <EyeOutlined aria-hidden="true" />,
+    },
+    approved: {
+      bg: tokens.colors.publishedBg,
+      border: tokens.colors.publishedBorder,
+      text: tokens.colors.publishedText,
+      label: t('status.approved'),
+      icon: <SafetyCertificateOutlined aria-hidden="true" />,
     },
   };
 

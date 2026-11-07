@@ -7,16 +7,17 @@ import {
   resolveHeaderTrailingSection,
   resolveSwitchedProductPath,
   resolveSwitchedProjectPath,
+  resolveSwitchedToProjectScopePath,
   type NavSectionConfig,
 } from './navigationConfig';
 
-describe('Classic Persistent SaaS navigationConfig and switcher helpers', () => {
+describe('Flat Project Menu + In-Page Tabs navigationConfig and switcher helpers', () => {
   it('keeps the left sidebar persistent across all routes including landing', () => {
     expect(hasProjectSidebar(undefined)).toBe(true);
     expect(hasProjectSidebar('proj-1')).toBe(true);
   });
 
-  it('provides the fixed 5-item menu at project scope without morphing or duplicate sections', () => {
+  it('provides the flat 5-item menu at project scope without morphing or product dropdown in sidebar', () => {
     const projectSections = buildProjectNavSections('proj-1', translateText, {
       products: [
         { id: 'prod-a', name: 'Sensor Board', product_type: 'mixed', archived: false },
@@ -78,7 +79,7 @@ describe('Classic Persistent SaaS navigationConfig and switcher helpers', () => 
     });
   });
 
-  it('keeps the exact same 5-item menu structure when scoped to a product without duplicating sections', () => {
+  it('preserves the flat 5-item menu structure when inspecting an active product via in-page tabs', () => {
     const productSections = buildProjectNavSections('proj-1', translateText, {
       activeProductId: 'prod-a',
     });
@@ -142,7 +143,8 @@ describe('Classic Persistent SaaS navigationConfig and switcher helpers', () => 
     expect(releasesItem?.disabled).toBe(true);
   });
 
-  it('preserves equivalent sub-routes when switching projects or products in context switchers', () => {
+  it('preserves equivalent sub-routes seamlessly across project switcher and in-page product tabs', () => {
+    // Project switching
     expect(resolveSwitchedProjectPath('/projects/p1/settings', 'p1', 'p2')).toBe(
       '/projects/p2/settings',
     );
@@ -154,6 +156,21 @@ describe('Classic Persistent SaaS navigationConfig and switcher helpers', () => 
     );
     expect(resolveSwitchedProjectPath('/projects/p1/products/a1', 'p1', 'p2')).toBe('/projects/p2');
 
+    // In-page product tabs switching (from project scope to product scope)
+    expect(resolveSwitchedProductPath('/projects/p1/releases', 'p1', undefined, 'b2')).toBe(
+      '/projects/p1/products/b2/releases',
+    );
+    expect(resolveSwitchedProductPath('/projects/p1/bom-pnp', 'p1', undefined, 'b2')).toBe(
+      '/projects/p1/products/b2/bom-pnp',
+    );
+    expect(resolveSwitchedProductPath('/projects/p1/settings', 'p1', undefined, 'b2')).toBe(
+      '/projects/p1/products/b2/settings',
+    );
+    expect(resolveSwitchedProductPath('/projects/p1', 'p1', undefined, 'b2')).toBe(
+      '/projects/p1/products/b2',
+    );
+
+    // In-page product tabs switching between sibling products
     expect(resolveSwitchedProductPath('/projects/p1/products/a1/releases', 'p1', 'a1', 'b2')).toBe(
       '/projects/p1/products/b2/releases',
     );
@@ -167,6 +184,21 @@ describe('Classic Persistent SaaS navigationConfig and switcher helpers', () => 
       resolveSwitchedProductPath('/projects/p1/products/a1/releases/r1', 'p1', 'a1', 'b2'),
     ).toBe('/projects/p1/products/b2');
 
+    // In-page product tab switching from a product back to All Products (project scope)
+    expect(resolveSwitchedToProjectScopePath('/projects/p1/products/a1/releases', 'p1', 'a1')).toBe(
+      '/projects/p1/releases',
+    );
+    expect(resolveSwitchedToProjectScopePath('/projects/p1/products/a1/bom-pnp', 'p1', 'a1')).toBe(
+      '/projects/p1/bom-pnp',
+    );
+    expect(resolveSwitchedToProjectScopePath('/projects/p1/products/a1/settings', 'p1', 'a1')).toBe(
+      '/projects/p1/settings',
+    );
+    expect(resolveSwitchedToProjectScopePath('/projects/p1/products/a1', 'p1', 'a1')).toBe(
+      '/projects/p1',
+    );
+
+    // Topbar breadcrumbs
     expect(
       resolveHeaderTrailingSection('/projects', undefined, undefined, translateText),
     ).toBeNull();

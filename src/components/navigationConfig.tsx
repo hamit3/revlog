@@ -41,8 +41,8 @@ export function getProductTypeIcon(productType: ProductType): React.ReactNode {
 }
 
 /**
- * In the Classic Persistent SaaS navigation model, the left sidebar renders
- * permanently across all routes, including `/projects` and `/projects/new`.
+ * In the Flat Project Menu + In-Page Tabs navigation model, the left sidebar
+ * renders permanently across all routes, including `/projects` and `/projects/new`.
  */
 export function hasProjectSidebar(_projectId?: string): boolean {
   return true;
@@ -76,7 +76,8 @@ export function resolveSwitchedProjectPath(
 
 /**
  * Preserves the equivalent product-level section (`releases`, `bom-pnp`, `settings`) when
- * switching between sibling products (A, B, C) via the product switcher.
+ * switching between sibling products (A, B, C) via in-page horizontal tabs or switching
+ * from project scope into product scope.
  */
 export function resolveSwitchedProductPath(
   pathname: string,
@@ -86,6 +87,16 @@ export function resolveSwitchedProductPath(
 ): string {
   const nextBase = `/projects/${projectId}/products/${nextProductId}`;
   if (!currentProductId) {
+    const projectBase = `/projects/${projectId}`;
+    if (pathname === `${projectBase}/settings` || pathname.startsWith(`${projectBase}/settings/`)) {
+      return `${nextBase}/settings`;
+    }
+    if (pathname === `${projectBase}/releases` || pathname.startsWith(`${projectBase}/releases/`)) {
+      return `${nextBase}/releases`;
+    }
+    if (pathname === `${projectBase}/bom-pnp` || pathname.startsWith(`${projectBase}/bom-pnp`)) {
+      return `${nextBase}/bom-pnp`;
+    }
     return nextBase;
   }
   const currentBase = `/projects/${projectId}/products/${currentProductId}`;
@@ -101,6 +112,32 @@ export function resolveSwitchedProductPath(
   return nextBase;
 }
 
+/**
+ * Preserves the equivalent project-level section (`releases`, `bom-pnp`, `settings`) when
+ * switching from a product scope back to the project scope (All products / System tab).
+ */
+export function resolveSwitchedToProjectScopePath(
+  pathname: string,
+  projectId: string,
+  currentProductId: string | undefined,
+): string {
+  const projectBase = `/projects/${projectId}`;
+  if (!currentProductId) {
+    return projectBase;
+  }
+  const currentBase = `${projectBase}/products/${currentProductId}`;
+  if (pathname === `${currentBase}/settings` || pathname.startsWith(`${currentBase}/settings/`)) {
+    return `${projectBase}/settings`;
+  }
+  if (pathname === `${currentBase}/releases` || pathname.startsWith(`${currentBase}/releases/`)) {
+    return `${projectBase}/releases`;
+  }
+  if (pathname === `${currentBase}/bom-pnp` || pathname.startsWith(`${currentBase}/bom-pnp`)) {
+    return `${projectBase}/bom-pnp`;
+  }
+  return projectBase;
+}
+
 export interface HeaderTrailingSection {
   parentLabel?: string;
   parentTo?: string;
@@ -108,8 +145,7 @@ export interface HeaderTrailingSection {
 }
 
 /**
- * Resolves the optional trailing section crumb shown after the Project / Product
- * context switchers in the top bar.
+ * Resolves the optional trailing section crumb shown in the top bar breadcrumb.
  */
 export function resolveHeaderTrailingSection(
   pathname: string,
@@ -210,10 +246,10 @@ export function resolveHeaderTrailingSection(
 }
 
 /**
- * Builds the Classic Persistent SaaS navigation items.
- * The primary menu consists of the exact 5 core items in a fixed order:
+ * Builds the Flat Project Menu navigation items.
+ * The left sidebar hosts exclusively project-level functions:
  * Projects, Overview, Releases, BOM & PnP, Settings.
- * It never morphs, jumps or duplicates sections.
+ * Product navigation is completely decoupled to in-page horizontal tabs.
  */
 export function buildProjectNavSections(
   projectId: string | undefined,

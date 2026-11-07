@@ -397,7 +397,13 @@
     "bomPnpCheckIssues": "{{errors}} error(s) and {{warnings}} warning(s) found.",
     "bomPnpCheckedFiles": "Checked files: {{bom}} / {{pnp}}",
     "bomPnpRunAt": "Checked on {{date}}",
-    "bomPnpMoreFindings": "+{{count}} more findings in BOM & PnP view."
+    "bomPnpMoreFindings": "+{{count}} more findings in BOM & PnP view.",
+    "downloadPackage": "Download package",
+    "downloadPackageAria": "Download release package zip for version {{version}}",
+    "downloadPackageSuccess": "Release package zip downloaded.",
+    "downloadPackageError": "Failed to create release package.",
+    "packagingProgress": "Packaging files ({{current}}/{{total}})...",
+    "manifestMismatchError": "Manifest hash verification failed. The release package was aborted."
   },
   "projectReleases": {
     "historyTitle": "Project releases",

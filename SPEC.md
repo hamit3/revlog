@@ -36,7 +36,7 @@ The MVP (auth, projects, categories, items, release wizard, release history, rel
   - When both releases contain a parsed BOM, show added, removed and changed parts (by reference designator and MPN).
   - Uses `release_items` snapshots only; never live item data.
 
-- [ ] 3. **Release package and manifest**
+- [x] 3. **Release package and manifest**
   - On a published release, "Download package" produces a zip of all files plus `manifest.json` (version, date, publisher, `manifest_hash`, per-file SHA-256 and original path).
   - The manifest hash must equal the stored `manifest_hash`; verify it in a test.
   - Package is built on demand and not stored permanently.

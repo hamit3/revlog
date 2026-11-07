@@ -133,6 +133,33 @@ export async function downloadProjectFileText(storagePath: string): Promise<stri
   return data.text();
 }
 
+export async function downloadProjectFileBytes(storagePath: string): Promise<Uint8Array> {
+  const { data, error } = await supabaseClient.storage
+    .from(PROJECT_FILES_BUCKET)
+    .download(storagePath);
+
+  if (error || !data) {
+    throw new Error(error?.message ?? 'Could not download file from storage.');
+  }
+
+  const arrayBuffer = await data.arrayBuffer();
+  return new Uint8Array(arrayBuffer);
+}
+
+export function triggerBlobDownload(blob: Blob, downloadFileName: string): void {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = downloadFileName;
+  anchor.rel = 'noopener noreferrer';
+  document.body.appendChild(anchor);
+  anchor.click();
+  document.body.removeChild(anchor);
+  setTimeout(() => {
+    URL.revokeObjectURL(url);
+  }, 1000);
+}
+
 export async function createShortLivedDownloadUrl(
   storagePath: string,
   downloadFileName?: string | null,

@@ -1,16 +1,27 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
-import { useTranslate } from '@refinedev/core';
+import { useNotification, useTranslate } from '@refinedev/core';
 import { List } from '@refinedev/antd';
-import { Alert, Button, Card, Empty, Spin, Timeline, Typography } from 'antd';
-import { ArrowRightOutlined, EditOutlined, RocketOutlined } from '@ant-design/icons';
+import { Alert, Button, Card, Empty, Space, Spin, Timeline, Tooltip, Typography } from 'antd';
+import {
+  ArrowRightOutlined,
+  DownloadOutlined,
+  EditOutlined,
+  RocketOutlined,
+} from '@ant-design/icons';
 import { tokens } from '../../theme/tokens';
 import { PageHeaderTitle } from '../../components/PageHeaderTitle';
 import { StatusBadge } from '../../components/StatusBadge';
 import { useProductAccess } from '../../lib/useProjectAccess';
 import { formatDateTime, formatReleaseDate } from '../../lib/format';
+import {
+  buildReleasePackageManifest,
+  buildReleasePackageZip,
+  mapReleaseItemsToZipPaths,
+} from '../../lib/releasePackage';
+import { downloadProjectFileBytes, triggerBlobDownload } from '../../lib/storage';
 import { supabaseClient } from '../../providers/supabaseClient';
-import type { Release } from '../../types/database';
+import type { Release, ReleaseItem } from '../../types/database';
 
 function publisherInitials(name: string): string {
   const parts = name.split(/[\s@._-]+/).filter(Boolean);
@@ -31,9 +42,82 @@ export const ReleaseListPage: React.FC = () => {
     isLoading: isAccessLoading,
   } = useProductAccess(projectId, productId);
 
+  const { open: notify } = useNotification();
   const [releases, setReleases] = useState<Release[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [packagingReleaseId, setPackagingReleaseId] = useState<string | null>(null);
+
+  const handleDownloadPackage = async (rel: Release) => {
+    if (rel.status !== 'published' || !project || !product) {
+      return;
+    }
+
+    setPackagingReleaseId(rel.id);
+    try {
+      const itemsRes = await supabaseClient
+        .from('release_items')
+        .select('*')
+        .eq('release_id', rel.id);
+
+      if (itemsRes.error || !itemsRes.data) {
+        throw new Error(itemsRes.error?.message ?? 'Could not load release items.');
+      }
+
+      const releaseItems = itemsRes.data as ReleaseItem[];
+      const fileItems = releaseItems.filter(
+        (ri) => ri.kind === 'file' && Boolean(ri.storage_path) && Boolean(ri.file_name),
+      );
+
+      const publisher =
+        rel.profiles?.full_name || rel.profiles?.email || t('common.unknownUser');
+
+      const manifest = await buildReleasePackageManifest({
+        release: rel,
+        releaseItems,
+        publisherName: publisher,
+        project: { id: project.id, name: project.name },
+        product: { id: product.id, name: product.name, code: product.code },
+      });
+
+      const pathMap = mapReleaseItemsToZipPaths(releaseItems);
+      const downloadedFiles: Array<{ path: string; data: Uint8Array }> = [];
+
+      for (const item of fileItems) {
+        const safePath = pathMap.get(item.id) ?? item.file_name ?? 'file.bin';
+        const fileBytes = await downloadProjectFileBytes(item.storage_path!);
+        downloadedFiles.push({
+          path: safePath,
+          data: fileBytes,
+        });
+      }
+
+      const zipBytes = buildReleasePackageZip({
+        manifest,
+        files: downloadedFiles,
+      });
+
+      const productPrefix = product.code || product.name;
+      const cleanPrefix = productPrefix.replace(/[^\w.-]+/g, '_');
+      const cleanVersion = rel.version_label.replace(/[^\w.-]+/g, '_');
+      const zipFileName = `${cleanPrefix}-${cleanVersion}.zip`;
+
+      const blob = new Blob([zipBytes.buffer as ArrayBuffer], { type: 'application/zip' });
+      triggerBlobDownload(blob, zipFileName);
+
+      notify?.({
+        type: 'success',
+        message: t('releases.downloadPackageSuccess'),
+      });
+    } catch (err) {
+      notify?.({
+        type: 'error',
+        message: err instanceof Error ? err.message : t('releases.downloadPackageError'),
+      });
+    } finally {
+      setPackagingReleaseId(null);
+    }
+  };
 
   useEffect(() => {
     let active = true;
@@ -198,13 +282,26 @@ export const ReleaseListPage: React.FC = () => {
                       </div>
 
                       {isPublished ? (
-                        <Button
-                          size="small"
-                          icon={<ArrowRightOutlined aria-hidden="true" />}
-                          onClick={() => navigate(`${productBase}/releases/${rel.id}`)}
-                        >
-                          {t('releases.viewRelease')}
-                        </Button>
+                        <Space size="small">
+                          <Tooltip title={t('releases.downloadPackage')}>
+                            <Button
+                              size="small"
+                              icon={<DownloadOutlined aria-hidden="true" />}
+                              loading={packagingReleaseId === rel.id}
+                              aria-label={t('releases.downloadPackageAria', {
+                                version: rel.version_label,
+                              })}
+                              onClick={() => void handleDownloadPackage(rel)}
+                            />
+                          </Tooltip>
+                          <Button
+                            size="small"
+                            icon={<ArrowRightOutlined aria-hidden="true" />}
+                            onClick={() => navigate(`${productBase}/releases/${rel.id}`)}
+                          >
+                            {t('releases.viewRelease')}
+                          </Button>
+                        </Space>
                       ) : (
                         canEditContent && (
                           <Button

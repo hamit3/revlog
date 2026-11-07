@@ -32,7 +32,16 @@ import { useProductAccess } from '../../lib/useProjectAccess';
 import { formatDateTime, formatFileSize } from '../../lib/format';
 import { computeManifestHash } from '../../lib/manifestHash';
 import { groupReleaseItemsByCategory } from '../../lib/releaseHelpers';
-import { triggerSignedFileDownload } from '../../lib/storage';
+import {
+  buildReleasePackageManifest,
+  buildReleasePackageZip,
+  mapReleaseItemsToZipPaths,
+} from '../../lib/releasePackage';
+import {
+  downloadProjectFileBytes,
+  triggerBlobDownload,
+  triggerSignedFileDownload,
+} from '../../lib/storage';
 import { supabaseClient } from '../../providers/supabaseClient';
 import type { BomPnpCheckRun, Release, ReleaseItem } from '../../types/database';
 
@@ -55,6 +64,8 @@ export const ReleaseShowPage: React.FC = () => {
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [bomPnpRun, setBomPnpRun] = useState<BomPnpCheckRun | null>(null);
+  const [isPackaging, setIsPackaging] = useState<boolean>(false);
+  const [packagingStatus, setPackagingStatus] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -172,6 +183,74 @@ export const ReleaseShowPage: React.FC = () => {
       });
     } finally {
       setDownloadingId(null);
+    }
+  };
+
+  const handleDownloadPackage = async () => {
+    if (!release || release.status !== 'published' || !project || !product) {
+      return;
+    }
+
+    const fileItems = releaseItems.filter(
+      (ri) => ri.kind === 'file' && Boolean(ri.storage_path) && Boolean(ri.file_name),
+    );
+
+    setIsPackaging(true);
+    setPackagingStatus(
+      t('releases.packagingProgress', { current: 0, total: fileItems.length }),
+    );
+
+    try {
+      const manifest = await buildReleasePackageManifest({
+        release,
+        releaseItems,
+        publisherName,
+        project: { id: project.id, name: project.name },
+        product: { id: product.id, name: product.name, code: product.code },
+      });
+
+      const pathMap = mapReleaseItemsToZipPaths(releaseItems);
+      const downloadedFiles: Array<{ path: string; data: Uint8Array }> = [];
+
+      for (let i = 0; i < fileItems.length; i += 1) {
+        const item = fileItems[i]!;
+        setPackagingStatus(
+          t('releases.packagingProgress', { current: i + 1, total: fileItems.length }),
+        );
+
+        const safePath = pathMap.get(item.id) ?? item.file_name ?? 'file.bin';
+        const fileBytes = await downloadProjectFileBytes(item.storage_path!);
+        downloadedFiles.push({
+          path: safePath,
+          data: fileBytes,
+        });
+      }
+
+      const zipBytes = buildReleasePackageZip({
+        manifest,
+        files: downloadedFiles,
+      });
+
+      const productPrefix = product.code || product.name;
+      const cleanPrefix = productPrefix.replace(/[^\w.-]+/g, '_');
+      const cleanVersion = release.version_label.replace(/[^\w.-]+/g, '_');
+      const zipFileName = `${cleanPrefix}-${cleanVersion}.zip`;
+
+      const blob = new Blob([zipBytes.buffer as ArrayBuffer], { type: 'application/zip' });
+      triggerBlobDownload(blob, zipFileName);
+
+      notify?.({
+        type: 'success',
+        message: t('releases.downloadPackageSuccess'),
+      });
+    } catch (err) {
+      notify?.({
+        type: 'error',
+        message: err instanceof Error ? err.message : t('releases.downloadPackageError'),
+      });
+    } finally {
+      setIsPackaging(false);
+      setPackagingStatus(null);
     }
   };
 
@@ -339,12 +418,25 @@ export const ReleaseShowPage: React.FC = () => {
         onBack: () => navigate(`${productBase}/releases`),
       }}
       headerButtons={() => (
-        <Button
-          icon={<HistoryOutlined aria-hidden="true" />}
-          onClick={() => navigate(`${productBase}/releases`)}
-        >
-          {t('releases.historyTitle')}
-        </Button>
+        <Space size="small">
+          <Button
+            type="primary"
+            icon={<DownloadOutlined aria-hidden="true" />}
+            loading={isPackaging}
+            aria-label={t('releases.downloadPackageAria', { version: release.version_label })}
+            onClick={() => void handleDownloadPackage()}
+          >
+            {isPackaging
+              ? packagingStatus || t('releases.downloadPackage')
+              : t('releases.downloadPackage')}
+          </Button>
+          <Button
+            icon={<HistoryOutlined aria-hidden="true" />}
+            onClick={() => navigate(`${productBase}/releases`)}
+          >
+            {t('releases.historyTitle')}
+          </Button>
+        </Space>
       )}
       contentProps={{
         bordered: false,

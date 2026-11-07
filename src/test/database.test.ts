@@ -5,6 +5,11 @@ import {
   computeProjectReleaseManifestHash,
   type ManifestItemInput,
 } from '../lib/manifestHash';
+import {
+  buildReleasePackageManifest,
+  buildReleasePackageZip,
+  readReleasePackageZip,
+} from '../lib/releasePackage';
 import { sha256HexFromBytes, sha256HexFromFile, sha256HexFromString } from '../lib/sha256';
 import type {
   BomPnpCheckRun,
@@ -135,6 +140,55 @@ describe('Database migrations, products, product & project releases, immutabilit
       })),
     );
     expect(tsHash).toBe(release.manifest_hash);
+  });
+
+  it('builds on-demand release package with manifest.json matching PostgreSQL published manifest_hash', async () => {
+    const releases = await ctx.asUser<Release>(
+      VIEWER_ID,
+      `select * from public.releases where id = $1`,
+      [SEED_RELEASE_ID],
+    );
+    const release = releases[0]!;
+    const items = await ctx.asUser<ReleaseItem>(
+      VIEWER_ID,
+      `select * from public.release_items where release_id = $1`,
+      [SEED_RELEASE_ID],
+    );
+
+    // Build the package manifest from database snapshots
+    const manifest = await buildReleasePackageManifest({
+      release,
+      releaseItems: items,
+      publisherName: 'Seed Owner',
+      project: { id: SEED_PROJECT_ID, name: 'Smart IoT Gateway & Sensor' },
+      product: { id: SEED_PRODUCT_SENSOR_ID, name: 'Sensor Board', code: 'SN-01' },
+    });
+
+    // Verify manifest_hash in manifest.json strictly equals database release.manifest_hash
+    expect(manifest.manifest_hash).toBe(release.manifest_hash);
+    expect(manifest.version).toBe(release.version_label);
+    expect(manifest.files.length).toBeGreaterThan(0);
+    for (const f of manifest.files) {
+      expect(f.path).toBeTruthy();
+      expect(f.category).toBeTruthy();
+    }
+
+    // Build in-memory zip archive
+    const zipBytes = buildReleasePackageZip({
+      manifest,
+      files: manifest.files.map((f) => ({
+        path: f.path,
+        data: new TextEncoder().encode(`Simulated content for ${f.file_name}`),
+      })),
+    });
+
+    expect(zipBytes.byteLength).toBeGreaterThan(0);
+
+    // Read back and inspect entries
+    const { entries, manifest: decodedManifest } = readReleasePackageZip(zipBytes);
+    expect(entries['manifest.json']).toBeDefined();
+    expect(decodedManifest).not.toBeNull();
+    expect(decodedManifest?.manifest_hash).toBe(release.manifest_hash);
   });
 
   it('matches Postgres publish_project_release manifest_hash with TypeScript computeProjectReleaseManifestHash and enforces immutability', async () => {

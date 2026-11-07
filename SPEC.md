@@ -1,4 +1,4 @@
-﻿# SPEC.md
+# SPEC.md
 
 Roadmap and feature specification for the Hardware Release Ledger.
 

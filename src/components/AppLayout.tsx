@@ -133,7 +133,7 @@ function renderNavItemLabel(
     </span>
   );
 
-  if (!item.to) {
+  if (!item.to || item.disabled) {
     return content;
   }
 
@@ -172,9 +172,11 @@ function mapSectionsToMenuItems(
           key: item.key,
           icon: item.icon,
           label: item.label,
+          disabled: item.disabled,
           children: item.children.map((child) => ({
             key: child.key,
             icon: child.icon,
+            disabled: child.disabled,
             label: renderNavItemLabel(child, selectedKeySet.has(child.key), onNavigate),
           })),
         };
@@ -183,11 +185,12 @@ function mapSectionsToMenuItems(
       return {
         key: item.key,
         icon: item.icon,
+        disabled: item.disabled,
         label: renderNavItemLabel(item, selectedKeySet.has(item.key), onNavigate),
       };
     });
 
-    if (collapsed) {
+    if (collapsed || !section.title) {
       menuItems.push(...mappedChildren);
     } else {
       menuItems.push({
@@ -232,7 +235,7 @@ export const AppLayout: React.FC = () => {
     });
   }, []);
 
-  // Global projects list powers the Supabase-style header project switcher and count pill
+  // Global projects list powers the sidebar context switcher
   const { query: allProjectsQuery } = useList<Project>({
     resource: 'projects',
     pagination: { mode: 'off' },
@@ -261,7 +264,6 @@ export const AppLayout: React.FC = () => {
   });
 
   const allProjects = useMemo(() => allProjectsQuery.data?.data ?? [], [allProjectsQuery.data]);
-  const activeProjects = useMemo(() => allProjects.filter((proj) => !proj.archived), [allProjects]);
 
   const activeProject = useMemo(
     () =>
@@ -271,10 +273,6 @@ export const AppLayout: React.FC = () => {
   );
 
   const projectProducts = useMemo(() => productsQuery.data?.data ?? [], [productsQuery.data?.data]);
-  const activeProjectProducts = useMemo(
-    () => projectProducts.filter((prod) => !prod.archived),
-    [projectProducts],
-  );
 
   const activeProduct = useMemo(
     () => (productId ? (projectProducts.find((p) => p.id === productId) ?? null) : null),
@@ -284,9 +282,6 @@ export const AppLayout: React.FC = () => {
   const showSidebar = hasProjectSidebar(projectId);
 
   const sections = useMemo<NavSectionConfig[]>(() => {
-    if (!projectId) {
-      return [];
-    }
     return buildProjectNavSections(projectId, t, {
       activeProductId: productId,
       products: projectProducts,
@@ -312,7 +307,7 @@ export const AppLayout: React.FC = () => {
     [location.pathname, productId, projectId, t],
   );
 
-  // Filtered projects for the header switcher
+  // Filtered projects for the switcher popover
   const switcherProjects = useMemo(() => {
     const q = projectFilter.trim().toLowerCase();
     return allProjects.filter((proj) => {
@@ -328,7 +323,7 @@ export const AppLayout: React.FC = () => {
     });
   }, [allProjects, projectFilter, projectId]);
 
-  // Filtered products for the header switcher
+  // Filtered products for the switcher popover
   const switcherProducts = useMemo(() => {
     const q = productFilter.trim().toLowerCase();
     return projectProducts.filter((prod) => {
@@ -391,6 +386,9 @@ export const AppLayout: React.FC = () => {
                     proj.id,
                   );
                   closeProjectPopover();
+                  if (isMobile) {
+                    setMobileSiderOpen(false);
+                  }
                   navigate(targetPath);
                 }}
               >
@@ -410,14 +408,32 @@ export const AppLayout: React.FC = () => {
 
       <hr className="revlog-switcher-divider" />
 
-      <Link to="/projects" className="revlog-switcher-item" onClick={closeProjectPopover}>
+      <Link
+        to="/projects"
+        className="revlog-switcher-item"
+        onClick={() => {
+          closeProjectPopover();
+          if (isMobile) {
+            setMobileSiderOpen(false);
+          }
+        }}
+      >
         <span className="revlog-switcher-icon-slot">
           <AppstoreOutlined aria-hidden="true" />
         </span>
         <span className="revlog-switcher-label">{t('nav.allProjects')}</span>
       </Link>
 
-      <Link to="/projects/new" className="revlog-switcher-item" onClick={closeProjectPopover}>
+      <Link
+        to="/projects/new"
+        className="revlog-switcher-item"
+        onClick={() => {
+          closeProjectPopover();
+          if (isMobile) {
+            setMobileSiderOpen(false);
+          }
+        }}
+      >
         <span className="revlog-switcher-icon-slot">
           <PlusOutlined aria-hidden="true" />
         </span>
@@ -443,6 +459,9 @@ export const AppLayout: React.FC = () => {
         className={`revlog-switcher-item${!productId ? ' revlog-switcher-item-selected' : ''}`}
         onClick={() => {
           closeProductPopover();
+          if (isMobile) {
+            setMobileSiderOpen(false);
+          }
           navigate(`/projects/${projectId}`);
         }}
       >
@@ -490,6 +509,9 @@ export const AppLayout: React.FC = () => {
                     prod.id,
                   );
                   closeProductPopover();
+                  if (isMobile) {
+                    setMobileSiderOpen(false);
+                  }
                   navigate(targetPath);
                 }}
               >
@@ -512,7 +534,12 @@ export const AppLayout: React.FC = () => {
       <Link
         to={`/projects/${projectId}/products/new`}
         className="revlog-switcher-item"
-        onClick={closeProductPopover}
+        onClick={() => {
+          closeProductPopover();
+          if (isMobile) {
+            setMobileSiderOpen(false);
+          }
+        }}
       >
         <span className="revlog-switcher-icon-slot">
           <PlusOutlined aria-hidden="true" />
@@ -560,10 +587,175 @@ export const AppLayout: React.FC = () => {
 
   const renderSiderBody = (collapsed: boolean) => (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      {/* Sider Header: Brand + Context Switchers */}
+      <div
+        style={{
+          padding: `${tokens.spacing.sm}px ${tokens.spacing.sm}px`,
+          borderBottom: `1px solid ${tokens.colors.borderSubtle}`,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: tokens.spacing.xs,
+          flexShrink: 0,
+        }}
+      >
+        {/* Brand Link */}
+        <Link
+          to="/projects"
+          aria-label={t('app.name')}
+          onClick={() => isMobile && setMobileSiderOpen(false)}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: tokens.spacing.xs,
+            height: 32,
+            paddingInline: collapsed ? 0 : tokens.spacing.xs,
+            justifyContent: collapsed ? 'center' : 'flex-start',
+            borderRadius: tokens.radius.sm,
+            textDecoration: 'none',
+            color: tokens.colors.textPrimary,
+          }}
+        >
+          <RevLogBrandIcon />
+          {!collapsed && <span className="revlog-brand-wordmark">{t('app.name')}</span>}
+        </Link>
+
+        {/* Project Context Switcher */}
+        {collapsed ? (
+          <Tooltip placement="right" title={activeProject?.name ?? t('nav.allProjects')}>
+            <Popover
+              trigger="click"
+              placement="rightTop"
+              arrow={false}
+              open={projectPopoverOpen}
+              onOpenChange={(next) => {
+                setProjectPopoverOpen(next);
+                if (!next) {
+                  setProjectFilter('');
+                }
+              }}
+              content={projectSwitcherContent}
+            >
+              <button
+                type="button"
+                className="revlog-sider-collapsed-btn"
+                aria-label={t('nav.switchProject')}
+                aria-expanded={projectPopoverOpen}
+              >
+                <HddOutlined aria-hidden="true" style={{ color: tokens.colors.accent }} />
+              </button>
+            </Popover>
+          </Tooltip>
+        ) : (
+          <Popover
+            trigger="click"
+            placement="bottomLeft"
+            arrow={false}
+            open={projectPopoverOpen}
+            onOpenChange={(next) => {
+              setProjectPopoverOpen(next);
+              if (!next) {
+                setProjectFilter('');
+              }
+            }}
+            content={projectSwitcherContent}
+          >
+            <button
+              type="button"
+              className="revlog-sider-context-btn"
+              aria-label={t('nav.switchProject')}
+              aria-expanded={projectPopoverOpen}
+            >
+              <HddOutlined
+                aria-hidden="true"
+                style={{ color: tokens.colors.accent, flexShrink: 0 }}
+              />
+              <span className="revlog-sider-context-label">
+                {activeProject?.name ?? t('nav.allProjects')}
+              </span>
+              <ChevronsUpDownIcon />
+            </button>
+          </Popover>
+        )}
+
+        {/* Product Context Switcher (visible when a project is selected) */}
+        {projectId &&
+          (collapsed ? (
+            <Tooltip
+              placement="right"
+              title={activeProduct?.name ?? t('nav.projectOverviewOption')}
+            >
+              <Popover
+                trigger="click"
+                placement="rightTop"
+                arrow={false}
+                open={productPopoverOpen}
+                onOpenChange={(next) => {
+                  setProductPopoverOpen(next);
+                  if (!next) {
+                    setProductFilter('');
+                  }
+                }}
+                content={productSwitcherContent}
+              >
+                <button
+                  type="button"
+                  className="revlog-sider-collapsed-btn"
+                  aria-label={t('nav.switchProduct')}
+                  aria-expanded={productPopoverOpen}
+                >
+                  <span style={{ color: tokens.colors.accent, display: 'inline-flex' }}>
+                    {activeProduct
+                      ? getProductTypeIcon(activeProduct.product_type)
+                      : <BlockOutlined aria-hidden="true" />}
+                  </span>
+                </button>
+              </Popover>
+            </Tooltip>
+          ) : (
+            <Popover
+              trigger="click"
+              placement="bottomLeft"
+              arrow={false}
+              open={productPopoverOpen}
+              onOpenChange={(next) => {
+                setProductPopoverOpen(next);
+                if (!next) {
+                  setProductFilter('');
+                }
+              }}
+              content={productSwitcherContent}
+            >
+              <button
+                type="button"
+                className="revlog-sider-context-btn"
+                aria-label={t('nav.switchProduct')}
+                aria-expanded={productPopoverOpen}
+              >
+                <span
+                  style={{
+                    color: tokens.colors.accent,
+                    display: 'inline-flex',
+                    flexShrink: 0,
+                  }}
+                >
+                  {activeProduct
+                    ? getProductTypeIcon(activeProduct.product_type)
+                    : <BlockOutlined aria-hidden="true" />}
+                </span>
+                <span className="revlog-sider-context-label">
+                  {activeProduct?.name ?? t('nav.allProducts')}
+                </span>
+                <ChevronsUpDownIcon />
+              </button>
+            </Popover>
+          ))}
+      </div>
+
+      {/* Primary Fixed SaaS Navigation Menu */}
       <nav
         aria-label={t('nav.primary')}
         className="revlog-sider-scroll"
-        style={{ paddingBlock: tokens.spacing.sm }}
+        style={{ paddingBlock: tokens.spacing.sm, flex: 1, overflowY: 'auto' }}
       >
         <Menu
           mode="inline"
@@ -575,6 +767,7 @@ export const AppLayout: React.FC = () => {
         />
       </nav>
 
+      {/* Sider Footer: Collapse / Expand Toggle */}
       {!isMobile && (
         <div
           style={{
@@ -615,10 +808,18 @@ export const AppLayout: React.FC = () => {
         {t('app.skipToContent')}
       </a>
 
-      {/* Full-Width Supabase-Style Top Context Navigation Bar */}
+      {/* Clean Top Header Bar: Breadcrumb + Account Menu */}
       <header className="revlog-topbar">
-        <nav aria-label={t('nav.contextNav')} className="revlog-topbar-nav">
-          {isMobile && showSidebar && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: tokens.spacing.sm,
+            minWidth: 0,
+            flex: 1,
+          }}
+        >
+          {isMobile && (
             <Button
               type="text"
               size="small"
@@ -628,174 +829,87 @@ export const AppLayout: React.FC = () => {
             />
           )}
 
-          <Tooltip title={projectId ? `${t('app.name')} · ${t('nav.allProjects')}` : undefined}>
-            <Link to="/projects" aria-label={t('app.name')} className="revlog-topbar-brand">
-              <RevLogBrandIcon />
-              {!projectId && <span className="revlog-brand-wordmark">{t('app.name')}</span>}
+          <nav aria-label={t('nav.contextNav')} className="revlog-topbar-breadcrumb">
+            <Link to="/projects" className="revlog-topbar-link">
+              {t('nav.projects')}
             </Link>
-          </Tooltip>
 
-          <span className="revlog-topbar-slash" aria-hidden="true">
-            /
-          </span>
+            {location.pathname === '/projects/new' && (
+              <>
+                <span className="revlog-topbar-slash" aria-hidden="true">
+                  /
+                </span>
+                <span className="revlog-breadcrumb-current">{t('projects.createTitle')}</span>
+              </>
+            )}
 
-          {!projectId ? (
-            trailingSection ? (
+            {projectId && (
+              <>
+                <span className="revlog-topbar-slash" aria-hidden="true">
+                  /
+                </span>
+                {location.pathname === `/projects/${projectId}` && !trailingSection ? (
+                  <span className="revlog-breadcrumb-current">
+                    {activeProject?.name ?? t('nav.project')}
+                  </span>
+                ) : (
+                  <Link to={`/projects/${projectId}`} className="revlog-topbar-link">
+                    {activeProject?.name ?? t('nav.project')}
+                  </Link>
+                )}
+              </>
+            )}
+
+            {projectId && location.pathname === `/projects/${projectId}/products/new` && (
+              <>
+                <span className="revlog-topbar-slash" aria-hidden="true">
+                  /
+                </span>
+                <span className="revlog-breadcrumb-current">{t('products.createTitle')}</span>
+              </>
+            )}
+
+            {projectId && productId && (
+              <>
+                <span className="revlog-topbar-slash" aria-hidden="true">
+                  /
+                </span>
+                {location.pathname === `/projects/${projectId}/products/${productId}` &&
+                !trailingSection ? (
+                  <span className="revlog-breadcrumb-current">
+                    {activeProduct?.name ?? t('nav.product')}
+                  </span>
+                ) : (
+                  <Link
+                    to={`/projects/${projectId}/products/${productId}`}
+                    className="revlog-topbar-link"
+                  >
+                    {activeProduct?.name ?? t('nav.product')}
+                  </Link>
+                )}
+              </>
+            )}
+
+            {trailingSection && (
               <>
                 {trailingSection.parentTo && trailingSection.parentLabel && (
                   <>
-                    <Link to={trailingSection.parentTo} className="revlog-topbar-link">
-                      {trailingSection.parentLabel}
-                    </Link>
                     <span className="revlog-topbar-slash" aria-hidden="true">
                       /
                     </span>
+                    <Link to={trailingSection.parentTo} className="revlog-topbar-link">
+                      {trailingSection.parentLabel}
+                    </Link>
                   </>
                 )}
-                <span className="revlog-topbar-current">{trailingSection.label}</span>
+                <span className="revlog-topbar-slash" aria-hidden="true">
+                  /
+                </span>
+                <span className="revlog-breadcrumb-current">{trailingSection.label}</span>
               </>
-            ) : (
-              <span className="revlog-topbar-current">
-                <span>{t('nav.projects')}</span>
-                {activeProjects.length > 0 && (
-                  <span className="revlog-count-pill">{activeProjects.length}</span>
-                )}
-              </span>
-            )
-          ) : (
-            <>
-              {/* Segment 1: Active Project + Switcher */}
-              <div className="revlog-context-segment" data-open={projectPopoverOpen}>
-                <Link to={`/projects/${projectId}`} className="revlog-context-segment-link">
-                  <HddOutlined
-                    aria-hidden="true"
-                    style={{ color: tokens.colors.accent, flexShrink: 0 }}
-                  />
-                  <span className="revlog-context-segment-label">
-                    {activeProject?.name ?? t('nav.project')}
-                  </span>
-                </Link>
-                <Popover
-                  trigger="click"
-                  placement="bottomLeft"
-                  arrow={false}
-                  open={projectPopoverOpen}
-                  onOpenChange={(next) => {
-                    setProjectPopoverOpen(next);
-                    if (!next) {
-                      setProjectFilter('');
-                    }
-                  }}
-                  content={projectSwitcherContent}
-                >
-                  <button
-                    type="button"
-                    className="revlog-context-segment-trigger"
-                    aria-label={t('nav.switchProject')}
-                    aria-expanded={projectPopoverOpen}
-                  >
-                    <ChevronsUpDownIcon />
-                  </button>
-                </Popover>
-              </div>
-
-              <span className="revlog-topbar-slash" aria-hidden="true">
-                /
-              </span>
-
-              {/* Segment 2: Active Product (or Quick Product Picker) + Switcher */}
-              {productId ? (
-                <div
-                  className="revlog-context-segment revlog-context-segment-active"
-                  data-open={productPopoverOpen}
-                >
-                  <Link
-                    to={`/projects/${projectId}/products/${productId}`}
-                    className="revlog-context-segment-link"
-                  >
-                    <span style={{ color: tokens.colors.accent, display: 'inline-flex' }}>
-                      {getProductTypeIcon(activeProduct?.product_type ?? 'mixed')}
-                    </span>
-                    <span className="revlog-context-segment-label">
-                      {activeProduct?.name ?? t('nav.product')}
-                    </span>
-                    {activeProduct?.code && <Tag bordered>{activeProduct.code}</Tag>}
-                  </Link>
-                  <Popover
-                    trigger="click"
-                    placement="bottomLeft"
-                    arrow={false}
-                    open={productPopoverOpen}
-                    onOpenChange={(next) => {
-                      setProductPopoverOpen(next);
-                      if (!next) {
-                        setProductFilter('');
-                      }
-                    }}
-                    content={productSwitcherContent}
-                  >
-                    <button
-                      type="button"
-                      className="revlog-context-segment-trigger"
-                      aria-label={t('nav.switchProduct')}
-                      aria-expanded={productPopoverOpen}
-                    >
-                      <ChevronsUpDownIcon />
-                    </button>
-                  </Popover>
-                </div>
-              ) : (
-                <Popover
-                  trigger="click"
-                  placement="bottomLeft"
-                  arrow={false}
-                  open={productPopoverOpen}
-                  onOpenChange={(next) => {
-                    setProductPopoverOpen(next);
-                    if (!next) {
-                      setProductFilter('');
-                    }
-                  }}
-                  content={productSwitcherContent}
-                >
-                  <button
-                    type="button"
-                    className="revlog-context-picker-btn"
-                    aria-label={t('nav.switchProduct')}
-                    aria-expanded={productPopoverOpen}
-                  >
-                    <BlockOutlined aria-hidden="true" />
-                    <span>{t('nav.selectProduct')}</span>
-                    {activeProjectProducts.length > 0 && (
-                      <span className="revlog-count-pill">{activeProjectProducts.length}</span>
-                    )}
-                    <ChevronsUpDownIcon />
-                  </button>
-                </Popover>
-              )}
-
-              {/* Segment 3: Optional Sub-Page Crumb */}
-              {trailingSection && (
-                <>
-                  {trailingSection.parentTo && trailingSection.parentLabel && (
-                    <>
-                      <span className="revlog-topbar-slash" aria-hidden="true">
-                        /
-                      </span>
-                      <Link to={trailingSection.parentTo} className="revlog-topbar-link">
-                        {trailingSection.parentLabel}
-                      </Link>
-                    </>
-                  )}
-                  <span className="revlog-topbar-slash" aria-hidden="true">
-                    /
-                  </span>
-                  <span className="revlog-topbar-current">{trailingSection.label}</span>
-                </>
-              )}
-            </>
-          )}
-        </nav>
+            )}
+          </nav>
+        </div>
 
         <Dropdown
           menu={{ items: accountDropdownItems }}
@@ -827,7 +941,7 @@ export const AppLayout: React.FC = () => {
         </Dropdown>
       </header>
 
-      {/* Body Workspace: Scoped Sidebar (only when a project is selected) + Main Content */}
+      {/* Body Workspace: Persistent Sider + Main Content Region */}
       <div className="revlog-shell-body">
         {showSidebar &&
           (isMobile ? (

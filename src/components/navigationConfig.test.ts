@@ -10,11 +10,13 @@ import {
   type NavSectionConfig,
 } from './navigationConfig';
 
-describe('Supabase-style scoped navigationConfig and header switcher helpers', () => {
-  it('hides the left sidebar on landing routes and scopes sections to active project or product', () => {
-    expect(hasProjectSidebar(undefined)).toBe(false);
+describe('Classic Persistent SaaS navigationConfig and switcher helpers', () => {
+  it('keeps the left sidebar persistent across all routes including landing', () => {
+    expect(hasProjectSidebar(undefined)).toBe(true);
     expect(hasProjectSidebar('proj-1')).toBe(true);
+  });
 
+  it('provides the fixed 5-item menu at project scope without morphing or duplicate sections', () => {
     const projectSections = buildProjectNavSections('proj-1', translateText, {
       products: [
         { id: 'prod-a', name: 'Sensor Board', product_type: 'mixed', archived: false },
@@ -22,91 +24,125 @@ describe('Supabase-style scoped navigationConfig and header switcher helpers', (
       ],
     });
 
-    expect(projectSections.map((s) => s.key)).toEqual([
-      'project-ledger-section',
-      'project-products-section',
-      'project-config-section',
+    expect(projectSections).toHaveLength(1);
+    expect(projectSections[0]!.key).toBe('main-menu');
+
+    const itemKeys = projectSections[0]!.items.map((i) => i.key);
+    expect(itemKeys).toEqual([
+      'nav-projects',
+      'nav-overview',
+      'nav-releases',
+      'nav-bom-pnp',
+      'nav-settings',
     ]);
 
+    expect(resolveActiveNavKeys(projectSections, '/projects')).toEqual({
+      selectedKeys: ['nav-projects'],
+      openKeys: [],
+    });
+    expect(resolveActiveNavKeys(projectSections, '/projects/new')).toEqual({
+      selectedKeys: ['nav-projects'],
+      openKeys: [],
+    });
     expect(resolveActiveNavKeys(projectSections, '/projects/proj-1')).toEqual({
-      selectedKeys: ['project-overview'],
+      selectedKeys: ['nav-overview'],
       openKeys: [],
     });
     expect(resolveActiveNavKeys(projectSections, '/projects/proj-1/products/new')).toEqual({
-      selectedKeys: ['project-new-product'],
+      selectedKeys: ['nav-overview'],
       openKeys: [],
     });
     expect(resolveActiveNavKeys(projectSections, '/projects/proj-1/releases')).toEqual({
-      selectedKeys: ['project-releases'],
+      selectedKeys: ['nav-releases'],
       openKeys: [],
     });
     expect(resolveActiveNavKeys(projectSections, '/projects/proj-1/releases/sys-99')).toEqual({
-      selectedKeys: ['project-releases'],
+      selectedKeys: ['nav-releases'],
       openKeys: [],
     });
     expect(resolveActiveNavKeys(projectSections, '/projects/proj-1/releases/new')).toEqual({
-      selectedKeys: ['project-new-release'],
+      selectedKeys: ['nav-releases'],
       openKeys: [],
     });
     expect(resolveActiveNavKeys(projectSections, '/projects/proj-1/releases/sys-99/edit')).toEqual({
-      selectedKeys: ['project-new-release'],
+      selectedKeys: ['nav-releases'],
       openKeys: [],
     });
     expect(resolveActiveNavKeys(projectSections, '/projects/proj-1/bom-pnp')).toEqual({
-      selectedKeys: ['project-bom-pnp'],
+      selectedKeys: ['nav-bom-pnp'],
       openKeys: [],
     });
     expect(resolveActiveNavKeys(projectSections, '/projects/proj-1/settings')).toEqual({
-      selectedKeys: ['project-settings'],
+      selectedKeys: ['nav-settings'],
       openKeys: [],
     });
+  });
 
+  it('keeps the exact same 5-item menu structure when scoped to a product without duplicating sections', () => {
     const productSections = buildProjectNavSections('proj-1', translateText, {
       activeProductId: 'prod-a',
     });
 
-    expect(productSections.map((s) => s.key)).toEqual([
-      'product-ledger-section',
-      'product-parent-project-section',
+    expect(productSections).toHaveLength(1);
+    const itemKeys = productSections[0]!.items.map((i) => i.key);
+    expect(itemKeys).toEqual([
+      'nav-projects',
+      'nav-overview',
+      'nav-releases',
+      'nav-bom-pnp',
+      'nav-settings',
     ]);
 
     expect(resolveActiveNavKeys(productSections, '/projects/proj-1/products/prod-a')).toEqual({
-      selectedKeys: ['product-overview'],
+      selectedKeys: ['nav-overview'],
       openKeys: [],
     });
     expect(
       resolveActiveNavKeys(productSections, '/projects/proj-1/products/prod-a/releases'),
     ).toEqual({
-      selectedKeys: ['product-releases'],
+      selectedKeys: ['nav-releases'],
       openKeys: [],
     });
     expect(
       resolveActiveNavKeys(productSections, '/projects/proj-1/products/prod-a/releases/rel-1'),
     ).toEqual({
-      selectedKeys: ['product-releases'],
+      selectedKeys: ['nav-releases'],
       openKeys: [],
     });
     expect(
       resolveActiveNavKeys(productSections, '/projects/proj-1/products/prod-a/releases/new'),
     ).toEqual({
-      selectedKeys: ['product-new-release'],
+      selectedKeys: ['nav-releases'],
       openKeys: [],
     });
     expect(
       resolveActiveNavKeys(productSections, '/projects/proj-1/products/prod-a/bom-pnp'),
     ).toEqual({
-      selectedKeys: ['product-bom-pnp'],
+      selectedKeys: ['nav-bom-pnp'],
       openKeys: [],
     });
     expect(
       resolveActiveNavKeys(productSections, '/projects/proj-1/products/prod-a/settings'),
     ).toEqual({
-      selectedKeys: ['product-settings'],
+      selectedKeys: ['nav-settings'],
       openKeys: [],
     });
   });
 
-  it('preserves equivalent sub-routes when switching projects or products in the top bar', () => {
+  it('disables project-scoped items when on root /projects without an active project', () => {
+    const rootSections = buildProjectNavSections(undefined, translateText);
+    const items = rootSections[0]!.items;
+
+    const projectsItem = items.find((i) => i.key === 'nav-projects');
+    const overviewItem = items.find((i) => i.key === 'nav-overview');
+    const releasesItem = items.find((i) => i.key === 'nav-releases');
+
+    expect(projectsItem?.disabled).toBeFalsy();
+    expect(overviewItem?.disabled).toBe(true);
+    expect(releasesItem?.disabled).toBe(true);
+  });
+
+  it('preserves equivalent sub-routes when switching projects or products in context switchers', () => {
     expect(resolveSwitchedProjectPath('/projects/p1/settings', 'p1', 'p2')).toBe(
       '/projects/p2/settings',
     );
@@ -139,7 +175,7 @@ describe('Supabase-style scoped navigationConfig and header switcher helpers', (
     ).toBe('New project');
     expect(
       resolveHeaderTrailingSection('/projects/p1/settings', 'p1', undefined, translateText)?.label,
-    ).toBe('Project settings');
+    ).toBe('Settings');
     expect(
       resolveHeaderTrailingSection('/projects/p1/bom-pnp', 'p1', undefined, translateText)?.label,
     ).toBe('BOM & PnP');

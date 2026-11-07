@@ -7,10 +7,7 @@ import {
   FolderOpenOutlined,
   HddOutlined,
   HistoryOutlined,
-  PlusSquareOutlined,
-  RocketOutlined,
   SettingOutlined,
-  ToolOutlined,
 } from '@ant-design/icons';
 import type { Product, ProductType } from '../types/database';
 
@@ -20,6 +17,7 @@ export interface NavItemConfig {
   to?: string;
   icon?: React.ReactNode;
   badgeCount?: number;
+  disabled?: boolean;
   matches?: (pathname: string) => boolean;
   children?: NavItemConfig[];
 }
@@ -43,17 +41,16 @@ export function getProductTypeIcon(productType: ProductType): React.ReactNode {
 }
 
 /**
- * In the Supabase-inspired navigation model, the left sidebar renders only once
- * a project has been selected; `/projects` and `/projects/new` act as the clean
- * organization/project selection landing view.
+ * In the Classic Persistent SaaS navigation model, the left sidebar renders
+ * permanently across all routes, including `/projects` and `/projects/new`.
  */
-export function hasProjectSidebar(projectId?: string): boolean {
-  return Boolean(projectId);
+export function hasProjectSidebar(_projectId?: string): boolean {
+  return true;
 }
 
 /**
- * Preserves the equivalent project-level section (`releases`, `settings`) when
- * switching between projects via the top header switcher.
+ * Preserves the equivalent project-level section (`releases`, `bom-pnp`, `settings`) when
+ * switching between projects via the header switcher.
  */
 export function resolveSwitchedProjectPath(
   pathname: string,
@@ -78,8 +75,8 @@ export function resolveSwitchedProjectPath(
 }
 
 /**
- * Preserves the equivalent product-level section (`releases`, `settings`) when
- * switching between sibling products (A, B, C) via the top header switcher.
+ * Preserves the equivalent product-level section (`releases`, `bom-pnp`, `settings`) when
+ * switching between sibling products (A, B, C) via the product switcher.
  */
 export function resolveSwitchedProductPath(
   pathname: string,
@@ -213,90 +210,77 @@ export function resolveHeaderTrailingSection(
 }
 
 /**
- * Product-scoped sidebar shown when inspecting a specific hardware/software
- * product under a project. Keeps primary product tools front-and-center while
- * providing 1-click return links to the parent project scope.
+ * Builds the Classic Persistent SaaS navigation items.
+ * The primary menu consists of the exact 5 core items in a fixed order:
+ * Projects, Overview, Releases, BOM & PnP, Settings.
+ * It never morphs, jumps or duplicates sections.
  */
-export function buildProductNavSections(
-  projectId: string,
-  productId: string,
+export function buildProjectNavSections(
+  projectId: string | undefined,
   t: TranslateFn,
+  options?: {
+    activeProductId?: string;
+    products?: readonly Pick<Product, 'id' | 'name' | 'product_type' | 'archived'>[];
+  },
 ): NavSectionConfig[] {
-  const projectBase = `/projects/${projectId}`;
-  const productBase = `${projectBase}/products/${productId}`;
+  const activeProductId = options?.activeProductId;
+  const projectBase = projectId ? `/projects/${projectId}` : '/projects';
+  const targetBase =
+    projectId && activeProductId
+      ? `${projectBase}/products/${activeProductId}`
+      : projectBase;
 
   return [
     {
-      key: 'product-ledger-section',
-      title: t('nav.productLedgerSection'),
+      key: 'main-menu',
+      title: '',
       items: [
         {
-          key: 'product-overview',
-          label: t('nav.productOverview'),
-          to: productBase,
-          icon: <FolderOpenOutlined aria-hidden="true" />,
-          matches: (pathname) => pathname === productBase,
-        },
-        {
-          key: 'product-releases',
-          label: t('nav.productReleases'),
-          to: `${productBase}/releases`,
-          icon: <HistoryOutlined aria-hidden="true" />,
-          matches: (pathname) =>
-            pathname === `${productBase}/releases` ||
-            (pathname.startsWith(`${productBase}/releases/`) &&
-              !pathname.startsWith(`${productBase}/releases/new`) &&
-              !pathname.endsWith('/edit')),
-        },
-        {
-          key: 'product-new-release',
-          label: t('nav.newProductRelease'),
-          to: `${productBase}/releases/new`,
-          icon: <RocketOutlined aria-hidden="true" />,
-          matches: (pathname) =>
-            pathname.startsWith(`${productBase}/releases/new`) ||
-            (pathname.startsWith(`${productBase}/releases/`) && pathname.endsWith('/edit')),
-        },
-        {
-          key: 'product-bom-pnp',
-          label: t('nav.bomPnp'),
-          to: `${productBase}/bom-pnp`,
-          icon: <FileSearchOutlined aria-hidden="true" />,
-          matches: (pathname) => pathname.startsWith(`${productBase}/bom-pnp`),
-        },
-        {
-          key: 'product-settings',
-          label: t('nav.productSettings'),
-          to: `${productBase}/settings`,
-          icon: <ToolOutlined aria-hidden="true" />,
-          matches: (pathname) => pathname.startsWith(`${productBase}/settings`),
-        },
-      ],
-    },
-    {
-      key: 'product-parent-project-section',
-      title: t('nav.parentProjectSection'),
-      items: [
-        {
-          key: 'back-to-project',
-          label: t('nav.allProducts'),
-          to: projectBase,
+          key: 'nav-projects',
+          label: t('nav.projects'),
+          to: '/projects',
           icon: <AppstoreOutlined aria-hidden="true" />,
-          matches: (pathname) => pathname === projectBase,
+          matches: (pathname) => pathname === '/projects' || pathname === '/projects/new',
         },
         {
-          key: 'project-releases',
-          label: t('nav.projectReleases'),
-          to: `${projectBase}/releases`,
+          key: 'nav-overview',
+          label: t('nav.overview'),
+          to: projectId ? targetBase : undefined,
+          disabled: !projectId,
+          icon: <FolderOpenOutlined aria-hidden="true" />,
+          matches: (pathname) =>
+            Boolean(projectId) &&
+            (pathname === targetBase ||
+              (!activeProductId && pathname === `${projectBase}/products/new`)),
+        },
+        {
+          key: 'nav-releases',
+          label: t('nav.releases'),
+          to: projectId ? `${targetBase}/releases` : undefined,
+          disabled: !projectId,
           icon: <HistoryOutlined aria-hidden="true" />,
-          matches: (pathname) => pathname.startsWith(`${projectBase}/releases`),
+          matches: (pathname) =>
+            Boolean(projectId) &&
+            (pathname === `${targetBase}/releases` ||
+              pathname.startsWith(`${targetBase}/releases/`)),
         },
         {
-          key: 'project-settings',
+          key: 'nav-bom-pnp',
+          label: t('nav.bomPnp'),
+          to: projectId ? `${targetBase}/bom-pnp` : undefined,
+          disabled: !projectId,
+          icon: <FileSearchOutlined aria-hidden="true" />,
+          matches: (pathname) =>
+            Boolean(projectId) && pathname.startsWith(`${targetBase}/bom-pnp`),
+        },
+        {
+          key: 'nav-settings',
           label: t('nav.settings'),
-          to: `${projectBase}/settings`,
+          to: projectId ? `${targetBase}/settings` : undefined,
+          disabled: !projectId,
           icon: <SettingOutlined aria-hidden="true" />,
-          matches: (pathname) => pathname.startsWith(`${projectBase}/settings`),
+          matches: (pathname) =>
+            Boolean(projectId) && pathname.startsWith(`${targetBase}/settings`),
         },
       ],
     },
@@ -304,102 +288,14 @@ export function buildProductNavSections(
 }
 
 /**
- * Project-scoped sidebar sections rendered once a project is selected.
- * Automatically adapts to product-scoped navigation when inside `/products/:productId`.
+ * Backwards-compatible wrapper that builds the unified nav sections scoped to a product.
  */
-export function buildProjectNavSections(
+export function buildProductNavSections(
   projectId: string,
+  productId: string,
   t: TranslateFn,
-  options?: {
-    activeProductId?: string;
-    products?: readonly Pick<Product, 'id' | 'name' | 'product_type' | 'archived'>[];
-  },
 ): NavSectionConfig[] {
-  const base = `/projects/${projectId}`;
-  const activeProductId = options?.activeProductId;
-
-  if (activeProductId) {
-    return buildProductNavSections(projectId, activeProductId, t);
-  }
-
-  const activeProducts = (options?.products ?? []).filter((p) => !p.archived);
-
-  const productItems: NavItemConfig[] = activeProducts.map((prod) => ({
-    key: `product-jump-${prod.id}`,
-    label: prod.name,
-    to: `${base}/products/${prod.id}`,
-    icon: getProductTypeIcon(prod.product_type),
-    matches: (pathname) => pathname === `${base}/products/${prod.id}`,
-  }));
-
-  productItems.push({
-    key: 'project-new-product',
-    label: t('nav.newProduct'),
-    to: `${base}/products/new`,
-    icon: <PlusSquareOutlined aria-hidden="true" />,
-    matches: (pathname) => pathname === `${base}/products/new`,
-  });
-
-  return [
-    {
-      key: 'project-ledger-section',
-      title: t('nav.ledgerSection'),
-      items: [
-        {
-          key: 'project-overview',
-          label: t('nav.overview'),
-          to: base,
-          icon: <AppstoreOutlined aria-hidden="true" />,
-          matches: (pathname) => pathname === base,
-        },
-        {
-          key: 'project-releases',
-          label: t('nav.projectReleases'),
-          to: `${base}/releases`,
-          icon: <HistoryOutlined aria-hidden="true" />,
-          matches: (pathname) =>
-            pathname === `${base}/releases` ||
-            (pathname.startsWith(`${base}/releases/`) &&
-              !pathname.startsWith(`${base}/releases/new`) &&
-              !pathname.endsWith('/edit')),
-        },
-        {
-          key: 'project-new-release',
-          label: t('nav.newProjectRelease'),
-          to: `${base}/releases/new`,
-          icon: <RocketOutlined aria-hidden="true" />,
-          matches: (pathname) =>
-            pathname.startsWith(`${base}/releases/new`) ||
-            (pathname.startsWith(`${base}/releases/`) && pathname.endsWith('/edit')),
-        },
-        {
-          key: 'project-bom-pnp',
-          label: t('nav.bomPnp'),
-          to: `${base}/bom-pnp`,
-          icon: <FileSearchOutlined aria-hidden="true" />,
-          matches: (pathname) => pathname.startsWith(`${base}/bom-pnp`),
-        },
-      ],
-    },
-    {
-      key: 'project-products-section',
-      title: t('nav.products'),
-      items: productItems,
-    },
-    {
-      key: 'project-config-section',
-      title: t('nav.configSection'),
-      items: [
-        {
-          key: 'project-settings',
-          label: t('nav.settings'),
-          to: `${base}/settings`,
-          icon: <SettingOutlined aria-hidden="true" />,
-          matches: (pathname) => pathname.startsWith(`${base}/settings`),
-        },
-      ],
-    },
-  ];
+  return buildProjectNavSections(projectId, t, { activeProductId: productId });
 }
 
 export function resolveActiveNavKeys(

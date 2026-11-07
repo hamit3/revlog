@@ -607,6 +607,36 @@ a:hover {
   border-color: var(--revlog-border);
 }
 
+/* Topbar Filterable & Selectable Switcher Button */
+.revlog-topbar-select-btn {
+  appearance: none;
+  background-color: var(--revlog-surface);
+  border: 1px solid var(--revlog-border-subtle);
+  border-radius: var(--revlog-radius);
+  block-size: 1.875rem;
+  padding-inline: 0.5rem 0.375rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  color: var(--revlog-text-primary);
+  font-family: inherit;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+  max-inline-size: 14rem;
+  min-inline-size: 0;
+  flex-shrink: 0;
+  transition:
+    background-color 0.12s ease,
+    border-color 0.12s ease;
+}
+
+.revlog-topbar-select-btn:hover,
+.revlog-topbar-select-btn[aria-expanded='true'] {
+  background-color: var(--revlog-surface-subtle);
+  border-color: var(--revlog-border);
+}
+
 .revlog-sider-context-label {
   overflow: hidden;
   text-overflow: ellipsis;

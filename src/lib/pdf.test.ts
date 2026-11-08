@@ -36,3 +36,4 @@ describe('PDF and schematic detection utilities', () => {
     expect(isPdfBuffer(new Uint8Array([0x25, 0x50]))).toBe(false);
   });
 });
+

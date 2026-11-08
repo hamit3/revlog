@@ -716,6 +716,14 @@ export const ReleaseShowPage: React.FC = () => {
               {t('gerber.openViewer')}
             </Button>
           )}
+          {gerberItems.length > 0 && (
+            <Button
+              icon={<FileSearchOutlined aria-hidden="true" />}
+              onClick={() => navigate(`${productBase}/board?releaseId=${release.id}`)}
+            >
+              {t('boardViewer.pageTitle')}
+            </Button>
+          )}
           <Button
             icon={<HistoryOutlined aria-hidden="true" />}
             onClick={() => navigate(`${productBase}/releases`)}

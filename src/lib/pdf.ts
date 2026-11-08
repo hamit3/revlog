@@ -63,3 +63,4 @@ export function isPdfBuffer(buffer: ArrayBuffer | Uint8Array): boolean {
     bytes[4] === 0x2d    // -
   );
 }
+

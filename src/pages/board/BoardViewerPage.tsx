@@ -400,8 +400,12 @@ export const BoardViewerPage: React.FC = () => {
         />
       )}
 
-      {/* Selectors Card: Source Mode Switcher + Context Selectors */}
-      <Card style={{ marginBottom: tokens.spacing.md }}>
+      {/* Selectors Toolbar Card */}
+      <Card
+        size="small"
+        style={{ marginBottom: tokens.spacing.md }}
+        bodyStyle={{ padding: `${tokens.spacing.sm}px ${tokens.spacing.md}px` }}
+      >
         <div
           style={{
             display: 'flex',
@@ -411,65 +415,60 @@ export const BoardViewerPage: React.FC = () => {
             flexWrap: 'wrap',
           }}
         >
-          {/* Source Switcher */}
-          <Space size="middle" wrap>
-            <div>
-              <Typography.Text
-                type="secondary"
-                style={{ display: 'block', marginBottom: 4 }}
-              >
-                {t('boardViewer.sourceMode')}
-              </Typography.Text>
-              <Segmented
-                value={sourceMode}
-                onChange={(val) => {
-                  setSourceMode(val as 'release' | 'upload');
-                  setErrorMessage(null);
-                }}
-                options={[
-                  {
-                    value: 'release',
-                    label: t('boardViewer.sourceFromRelease'),
-                    icon: <HistoryOutlined aria-hidden="true" />,
-                  },
-                  {
-                    value: 'upload',
-                    label: t('boardViewer.sourceUploadExternal'),
-                    icon: <UploadOutlined aria-hidden="true" />,
-                  },
-                ]}
-              />
-            </div>
+          {/* Left Controls: Mode Switcher + Contextual Selectors */}
+          <Space size="middle" align="center" wrap>
+            <Segmented
+              value={sourceMode}
+              onChange={(val) => {
+                setSourceMode(val as 'release' | 'upload');
+                setErrorMessage(null);
+              }}
+              options={[
+                {
+                  value: 'release',
+                  label: t('boardViewer.sourceFromRelease'),
+                  icon: <HistoryOutlined aria-hidden="true" />,
+                },
+                {
+                  value: 'upload',
+                  label: t('boardViewer.sourceUploadExternal'),
+                  icon: <UploadOutlined aria-hidden="true" />,
+                },
+              ]}
+            />
+
+            <div
+              style={{
+                width: 1,
+                height: 20,
+                backgroundColor: tokens.colors.border,
+              }}
+              aria-hidden="true"
+            />
 
             {/* Release Mode Selectors */}
             {sourceMode === 'release' && (
-              <>
+              <Space size="middle" align="center" wrap>
                 {!productId && products.length > 0 && (
-                  <div>
-                    <Typography.Text
-                      type="secondary"
-                      style={{ display: 'block', marginBottom: 4 }}
-                    >
-                      {t('nav.product')}
+                  <Space size={tokens.spacing.xs} align="center">
+                    <Typography.Text type="secondary">
+                      {t('nav.product')}:
                     </Typography.Text>
                     <Select
                       value={effectiveProductId}
-                      style={{ minWidth: 200 }}
+                      style={{ minWidth: 180 }}
                       options={products.map((p) => ({ label: p.name, value: p.id }))}
                       onChange={(val) => {
                         setEffectiveProductId(val);
                         setSelectedReleaseId(undefined);
                       }}
                     />
-                  </div>
+                  </Space>
                 )}
 
-                <div>
-                  <Typography.Text
-                    type="secondary"
-                    style={{ display: 'block', marginBottom: 4 }}
-                  >
-                    {t('boardViewer.selectRelease')}
+                <Space size={tokens.spacing.xs} align="center">
+                  <Typography.Text type="secondary">
+                    {t('boardViewer.selectRelease')}:
                   </Typography.Text>
                   <Select
                     value={selectedReleaseId}
@@ -484,13 +483,13 @@ export const BoardViewerPage: React.FC = () => {
                       setSearchParams({ releaseId: val });
                     }}
                   />
-                </div>
-              </>
+                </Space>
+              </Space>
             )}
 
             {/* External Upload Status Badges */}
             {sourceMode === 'upload' && localGerberFiles.length > 0 && (
-              <div className="revlog-inline-row" style={{ gap: tokens.spacing.xs, alignItems: 'flex-end', paddingTop: 20 }}>
+              <Space size={tokens.spacing.xs} align="center" wrap>
                 {localArchiveName && <Tag bordered>{localArchiveName}</Tag>}
                 <span className="revlog-count-pill">
                   {t('boardViewer.loadedLayersCount', { count: localGerberFiles.length })}
@@ -505,7 +504,7 @@ export const BoardViewerPage: React.FC = () => {
                     {t('boardViewer.loadedBomRowsCount', { count: localBomRows.length })}
                   </span>
                 )}
-              </div>
+              </Space>
             )}
           </Space>
 
@@ -529,7 +528,7 @@ export const BoardViewerPage: React.FC = () => {
             )}
 
             {sourceMode === 'upload' && localGerberFiles.length > 0 && (
-              <Space size="small">
+              <Space size="small" align="center">
                 {/* Optional Supplementary PnP / BOM upload buttons */}
                 <input
                   ref={extraPnpInputRef}
@@ -562,6 +561,7 @@ export const BoardViewerPage: React.FC = () => {
                 </Button>
 
                 <Button
+                  size="small"
                   danger
                   icon={<DeleteOutlined aria-hidden="true" />}
                   onClick={handleClearLocalFiles}

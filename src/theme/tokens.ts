@@ -26,6 +26,17 @@ export const tokens = {
     warningBg: '#FFFDF2',
     warningBorder: '#E6D39A',
     white: '#FFFFFF',
+    gerberCanvasBg: '#0F1318',
+    gerberGridDot: 'rgba(255, 255, 255, 0.08)',
+    gerberDotBorder: 'rgba(0, 0, 0, 0.15)',
+    gerberCopperTop: '#E58E26',
+    gerberCopperBottom: '#3B82F6',
+    gerberSilkscreen: '#F8FAFC',
+    gerberSoldermaskTop: '#10B981',
+    gerberSoldermaskBottom: '#047857',
+    gerberOutline: '#F43F5E',
+    gerberDrill: '#94A3B8',
+    gerberOther: '#64748B',
     maskBg: 'rgba(31, 35, 40, 0.42)',
     subtleShadow: '0 1px 2px rgba(31, 35, 40, 0.05)',
     cardShadow: '0 1px 2px rgba(31, 35, 40, 0.04), 0 1px 3px rgba(31, 35, 40, 0.03)',
@@ -261,6 +272,7 @@ export function applyThemeCssVariables(target?: HTMLElement): void {
   root.style.setProperty('--revlog-warning-text', tokens.colors.warningText);
   root.style.setProperty('--revlog-warning-bg', tokens.colors.warningBg);
   root.style.setProperty('--revlog-warning-border', tokens.colors.warningBorder);
+  root.style.setProperty('--revlog-gerber-canvas-bg', tokens.colors.gerberCanvasBg);
   root.style.setProperty('--revlog-font-sans', tokens.typography.fontFamilySans);
   root.style.setProperty('--revlog-font-mono', tokens.typography.fontFamilyMono);
   root.style.setProperty('--revlog-radius', `${tokens.radius.md}px`);

@@ -61,7 +61,7 @@ The MVP (auth, projects, categories, items, release wizard, release history, rel
 
 ## Phase 2: Viewers
 
-- [ ] 7. **Gerber viewer**
+- [x] 7. **Gerber viewer**
   - Browser-based layer viewer on the release detail page and item panel (toggle layers, zoom, pan).
   - Use an existing open-source library; do not write a Gerber parser from scratch.
   - Graceful message when a file cannot be parsed.

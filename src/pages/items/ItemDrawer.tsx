@@ -14,12 +14,14 @@ import {
   Typography,
   Upload,
 } from 'antd';
-import { FileOutlined, InboxOutlined, LinkOutlined } from '@ant-design/icons';
+import { EyeOutlined, FileOutlined, InboxOutlined, LinkOutlined } from '@ant-design/icons';
 import { tokens } from '../../theme/tokens';
 import { appEnv } from '../../lib/env';
 import { sha256HexFromFile } from '../../lib/sha256';
 import { formatFileSize } from '../../lib/format';
 import { uploadProjectFileWithProgress, validateUploadFileSize } from '../../lib/storage';
+import { isAnyGerberItem } from '../../lib/gerber';
+import { GerberViewerModal } from '../../components/gerber/GerberViewerModal';
 import { supabaseClient } from '../../providers/supabaseClient';
 import type { Category, Item, ItemKind } from '../../types/database';
 
@@ -75,6 +77,7 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
   const [uploadPercent, setUploadPercent] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isGerberModalOpen, setIsGerberModalOpen] = useState(false);
 
   useEffect(() => {
     if (!open) {
@@ -371,6 +374,21 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
               />
             )}
 
+            {isEditing &&
+              editingItem?.file_name &&
+              isAnyGerberItem(editingItem.file_name) &&
+              editingItem.storage_path && (
+                <div style={{ marginBottom: tokens.spacing.sm }}>
+                  <Button
+                    size="small"
+                    icon={<EyeOutlined aria-hidden="true" />}
+                    onClick={() => setIsGerberModalOpen(true)}
+                  >
+                    {t('gerber.openViewer')}
+                  </Button>
+                </div>
+              )}
+
             <Upload.Dragger
               name="file"
               multiple={false}
@@ -488,6 +506,16 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
           />
         </Form.Item>
       </Form>
+
+      {editingItem && (
+        <GerberViewerModal
+          open={isGerberModalOpen}
+          title={editingItem.title || editingItem.file_name || undefined}
+          fileName={editingItem.file_name}
+          storagePath={editingItem.storage_path}
+          onClose={() => setIsGerberModalOpen(false)}
+        />
+      )}
     </Drawer>
   );
 };

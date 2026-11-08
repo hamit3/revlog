@@ -37,12 +37,14 @@ import {
 import { tokens } from '../../theme/tokens';
 import { PageHeaderTitle } from '../../components/PageHeaderTitle';
 import { StatusBadge } from '../../components/StatusBadge';
+import { GerberViewerModal } from '../../components/gerber/GerberViewerModal';
 import { ShareLinkModal } from './ShareLinkModal';
 import { useProductAccess } from '../../lib/useProjectAccess';
 import { formatDateTime, formatFileSize } from '../../lib/format';
 import { computeManifestHash } from '../../lib/manifestHash';
 import { groupReleaseItemsByCategory } from '../../lib/releaseHelpers';
 import { evaluateReleaseCompleteness } from '../../lib/completeness';
+import { isAnyGerberItem } from '../../lib/gerber';
 import {
   buildReleasePackageManifest,
   buildReleasePackageZip,
@@ -96,6 +98,13 @@ export const ReleaseShowPage: React.FC = () => {
   const [isPackaging, setIsPackaging] = useState<boolean>(false);
   const [packagingStatus, setPackagingStatus] = useState<string | null>(null);
   const [isShareModalOpen, setIsShareModalOpen] = useState<boolean>(false);
+  const [isGerberModalOpen, setIsGerberModalOpen] = useState<boolean>(false);
+  const [selectedGerberTarget, setSelectedGerberTarget] = useState<{
+    title?: string;
+    fileName?: string | null;
+    storagePath?: string | null;
+    multipleItems?: { fileName: string; storagePath: string }[];
+  } | null>(null);
 
   const [isApproveModalOpen, setIsApproveModalOpen] = useState<boolean>(false);
   const [isRejectModalOpen, setIsRejectModalOpen] = useState<boolean>(false);
@@ -201,6 +210,11 @@ export const ReleaseShowPage: React.FC = () => {
 
   const groupedCategories = useMemo(
     () => groupReleaseItemsByCategory(releaseItems),
+    [releaseItems],
+  );
+
+  const gerberItems = useMemo(
+    () => releaseItems.filter((item) => isAnyGerberItem(item.file_name)),
     [releaseItems],
   );
 
@@ -514,19 +528,40 @@ export const ReleaseShowPage: React.FC = () => {
     {
       title: t('releases.columns.action'),
       key: 'action',
-      width: 130,
+      width: 170,
       align: 'right',
       render: (_val: unknown, record: ReleaseItem) =>
         record.kind === 'file' ? (
-          <Button
-            size="small"
-            icon={<DownloadOutlined aria-hidden="true" />}
-            loading={downloadingId === record.id}
-            aria-label={t('items.downloadAria', { title: record.title ?? '' })}
-            onClick={() => void handleDownload(record)}
-          >
-            {t('common.download')}
-          </Button>
+          <div className="revlog-inline-row" style={{ justifyContent: 'flex-end', gap: 4 }}>
+            {isAnyGerberItem(record.file_name) && (
+              <Tooltip title={t('gerber.openViewer')}>
+                <Button
+                  size="small"
+                  icon={<EyeOutlined aria-hidden="true" />}
+                  aria-label={t('gerber.openViewerAria', {
+                    name: record.title || record.file_name || '',
+                  })}
+                  onClick={() => {
+                    setSelectedGerberTarget({
+                      title: record.title || record.file_name || undefined,
+                      fileName: record.file_name,
+                      storagePath: record.storage_path,
+                    });
+                    setIsGerberModalOpen(true);
+                  }}
+                />
+              </Tooltip>
+            )}
+            <Button
+              size="small"
+              icon={<DownloadOutlined aria-hidden="true" />}
+              loading={downloadingId === record.id}
+              aria-label={t('items.downloadAria', { title: record.title ?? '' })}
+              onClick={() => void handleDownload(record)}
+            >
+              {t('common.download')}
+            </Button>
+          </div>
         ) : (
           <Button
             size="small"
@@ -600,6 +635,25 @@ export const ReleaseShowPage: React.FC = () => {
               onClick={() => void handlePublish()}
             >
               {t('releases.publishButton')}
+            </Button>
+          )}
+          {gerberItems.length > 0 && (
+            <Button
+              icon={<EyeOutlined aria-hidden="true" />}
+              onClick={() => {
+                setSelectedGerberTarget({
+                  title: `${release.version_label} · ${t('gerber.viewerTitle')}`,
+                  multipleItems: gerberItems
+                    .filter((it) => it.file_name && it.storage_path)
+                    .map((it) => ({
+                      fileName: it.file_name!,
+                      storagePath: it.storage_path!,
+                    })),
+                });
+                setIsGerberModalOpen(true);
+              }}
+            >
+              {t('gerber.openViewer')}
             </Button>
           )}
           <Button
@@ -1298,6 +1352,18 @@ export const ReleaseShowPage: React.FC = () => {
         onClose={() => setIsShareModalOpen(false)}
         releaseId={release.id}
         releaseVersion={release.version_label}
+      />
+
+      <GerberViewerModal
+        open={isGerberModalOpen}
+        title={selectedGerberTarget?.title}
+        fileName={selectedGerberTarget?.fileName}
+        storagePath={selectedGerberTarget?.storagePath}
+        multipleItems={selectedGerberTarget?.multipleItems}
+        onClose={() => {
+          setIsGerberModalOpen(false);
+          setSelectedGerberTarget(null);
+        }}
       />
     </Show>
   );

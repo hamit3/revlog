@@ -737,5 +737,37 @@
     "size": "Size",
     "searchItemsPlaceholder": "Filter items by title or category...",
     "searchBomPlaceholder": "Filter parts by designator or MPN..."
+  },
+  "gerber": {
+    "viewerTitle": "Gerber viewer",
+    "openViewer": "View Gerber",
+    "openViewerAria": "View Gerber layers for {{name}}",
+    "loading": "Parsing Gerber layers...",
+    "zoomIn": "Zoom in",
+    "zoomOut": "Zoom out",
+    "resetZoom": "Reset view",
+    "layersHeading": "Layers",
+    "viewMode": "View mode",
+    "viewTopBoard": "Top board",
+    "viewBottomBoard": "Bottom board",
+    "viewLayers": "Layer stack",
+    "selectAll": "Select all",
+    "deselectAll": "Deselect all",
+    "topOnly": "Top layers",
+    "bottomOnly": "Bottom layers",
+    "parseErrorTitle": "Unable to parse Gerber file",
+    "parseErrorDescription": "The file cannot be parsed as a valid Gerber or drill layer.",
+    "noLayersFound": "No valid Gerber or drill layers were found in this file.",
+    "layerCount": "{{count}} layer(s)",
+    "downloadSvg": "Download SVG",
+    "types": {
+      "copper": "Copper",
+      "silkscreen": "Silkscreen",
+      "soldermask": "Solder mask",
+      "outline": "Board outline",
+      "drill": "Drill",
+      "drawing": "Drawing",
+      "other": "Other"
+    }
   }
 }

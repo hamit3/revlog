@@ -161,15 +161,18 @@ export const ReleaseWizardPage: React.FC = () => {
         return;
       }
 
-      if (catRes.error || itemRes.error || rulesRes.error) {
+      if (catRes.error || itemRes.error) {
         setErrorMessage(
           catRes.error?.message ??
             itemRes.error?.message ??
-            rulesRes.error?.message ??
             t('common.errorPrefix'),
         );
         setIsLoading(false);
         return;
+      }
+
+      if (rulesRes.error) {
+        console.warn('Could not load checklist rules, falling back to empty checklist:', rulesRes.error.message);
       }
 
       const loadedCategories = (catRes.data as Category[]) ?? [];

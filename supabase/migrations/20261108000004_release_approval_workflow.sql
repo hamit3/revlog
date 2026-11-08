@@ -16,7 +16,9 @@ alter table public.releases
   add column if not exists approved_by uuid references public.profiles(id),
   add column if not exists approval_notes text;
 
--- Backfill created_by for any existing legacy releases
+-- Backfill created_by for any existing legacy releases (temporarily disable immutability trigger for DDL migration)
+alter table public.releases disable trigger prevent_published_release_changes;
+
 update public.releases
    set created_by = coalesce(
      published_by,
@@ -30,6 +32,8 @@ update public.releases
      )
    )
  where created_by is null;
+
+alter table public.releases enable trigger prevent_published_release_changes;
 
 -- Indexes for review/approval lookups
 create index if not exists releases_created_by_idx

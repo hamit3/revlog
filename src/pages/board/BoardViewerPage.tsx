@@ -16,7 +16,9 @@ import {
   Upload,
 } from 'antd';
 import {
+  BoxPlotOutlined,
   DeleteOutlined,
+  FileSearchOutlined,
   HistoryOutlined,
   InboxOutlined,
   UploadOutlined,
@@ -24,12 +26,14 @@ import {
 import { unzipSync } from 'fflate';
 import { PageHeaderTitle } from '../../components/PageHeaderTitle';
 import { GerberViewerModal } from '../../components/gerber/GerberViewerModal';
+import { ThreeViewer } from '../../components/three/ThreeViewer';
 import {
   extractFilesFromZip,
   isAnyGerberItem,
   isGerberArchiveFileName,
   isGerberFileName,
 } from '../../lib/gerber';
+import { is3DModelFileName } from '../../lib/model3d';
 import {
   evaluateBomPnpCsvTexts,
   isLikelyBomName,
@@ -56,14 +60,20 @@ export const BoardViewerPage: React.FC = () => {
   // Source selection: from release or upload local external file
   const [sourceMode, setSourceMode] = useState<'release' | 'upload'>('release');
 
+  // View type selection: 2D Gerber & PnP layer view vs 3D model view
+  const [viewType, setViewType] = useState<'2d' | '3d'>('2d');
+  const [selected3DFileName, setSelected3DFileName] = useState<string | undefined>(undefined);
+
   // External file upload states
   const [localGerberFiles, setLocalGerberFiles] = useState<{ name: string; content: string }[]>([]);
+  const [local3DFiles, setLocal3DFiles] = useState<{ name: string; buffer: ArrayBuffer }[]>([]);
   const [localBomRows, setLocalBomRows] = useState<ParsedBomRow[]>([]);
   const [localPnpRows, setLocalPnpRows] = useState<ParsedPnpRow[]>([]);
   const [localArchiveName, setLocalArchiveName] = useState<string>('');
   const [isProcessingUpload, setIsProcessingUpload] = useState<boolean>(false);
   const extraPnpInputRef = useRef<HTMLInputElement>(null);
   const extraBomInputRef = useRef<HTMLInputElement>(null);
+  const extra3DInputRef = useRef<HTMLInputElement>(null);
 
   const [products, setProducts] = useState<Product[]>([]);
   const [effectiveProductId, setEffectiveProductId] = useState<string | undefined>(productId);
@@ -78,6 +88,9 @@ export const BoardViewerPage: React.FC = () => {
 
   const [productItems, setProductItems] = useState<Item[]>([]);
   const [releaseItemsFromDb, setReleaseItemsFromDb] = useState<
+    { fileName: string; storagePath: string }[]
+  >([]);
+  const [release3DItemsFromDb, setRelease3DItemsFromDb] = useState<
     { fileName: string; storagePath: string }[]
   >([]);
 
@@ -196,7 +209,43 @@ export const BoardViewerPage: React.FC = () => {
     return selectedRelease ? releaseItemsFromDb : productGerberItems;
   }, [selectedRelease, releaseItemsFromDb, productGerberItems]);
 
-  // Load Gerber files available for the selected release
+  const product3DItems = useMemo(() => {
+    return productItems
+      .filter((i) => is3DModelFileName(i.file_name) && i.storage_path && i.file_name)
+      .map((i) => ({ fileName: i.file_name!, storagePath: i.storage_path! }));
+  }, [productItems]);
+
+  const effective3DItems = useMemo(() => {
+    return selectedRelease ? release3DItemsFromDb : product3DItems;
+  }, [selectedRelease, release3DItemsFromDb, product3DItems]);
+
+  const active3DItem = useMemo(() => {
+    if (effective3DItems.length === 0) {
+      return null;
+    }
+    if (selected3DFileName) {
+      const match = effective3DItems.find((i) => i.fileName === selected3DFileName);
+      if (match) {
+        return match;
+      }
+    }
+    return effective3DItems[0] ?? null;
+  }, [effective3DItems, selected3DFileName]);
+
+  const activeLocal3D = useMemo(() => {
+    if (local3DFiles.length === 0) {
+      return null;
+    }
+    if (selected3DFileName) {
+      const match = local3DFiles.find((f) => f.name === selected3DFileName);
+      if (match) {
+        return match;
+      }
+    }
+    return local3DFiles[0] ?? null;
+  }, [local3DFiles, selected3DFileName]);
+
+  // Load Gerber and 3D files available for the selected release
   useEffect(() => {
     if (!selectedRelease) {
       return;
@@ -218,11 +267,19 @@ export const BoardViewerPage: React.FC = () => {
         return;
       }
 
-      const items = ((data as ReleaseItem[]) ?? [])
-        .filter((ri) => isAnyGerberItem(ri.file_name) && ri.storage_path && ri.file_name)
+      const allItems = ((data as ReleaseItem[]) ?? [])
+        .filter((ri) => ri.storage_path && ri.file_name);
+
+      const gerbers = allItems
+        .filter((ri) => isAnyGerberItem(ri.file_name))
         .map((ri) => ({ fileName: ri.file_name!, storagePath: ri.storage_path! }));
 
-      setReleaseItemsFromDb(items);
+      const models3d = allItems
+        .filter((ri) => is3DModelFileName(ri.file_name))
+        .map((ri) => ({ fileName: ri.file_name!, storagePath: ri.storage_path! }));
+
+      setReleaseItemsFromDb(gerbers);
+      setRelease3DItemsFromDb(models3d);
     })();
 
     return () => {
@@ -241,6 +298,7 @@ export const BoardViewerPage: React.FC = () => {
 
     try {
       const collectedGerbers: { name: string; content: string }[] = [];
+      const collected3DFiles: { name: string; buffer: ArrayBuffer }[] = [];
       let detectedBomText = '';
       let detectedPnpText = '';
       let mainName = '';
@@ -255,7 +313,7 @@ export const BoardViewerPage: React.FC = () => {
           const extracted = extractFilesFromZip(zipBytes);
           collectedGerbers.push(...extracted);
 
-          // Check if zip also contains BOM or PnP CSVs
+          // Check if zip also contains BOM, PnP CSVs, or 3D models
           try {
             const unzipped = unzipSync(zipBytes);
             const decoder = new TextDecoder('utf-8', { fatal: false });
@@ -265,7 +323,12 @@ export const BoardViewerPage: React.FC = () => {
               }
               const basename = path.split('/').pop() ?? path;
               const lower = basename.toLowerCase();
-              if (lower.endsWith('.csv') || lower.endsWith('.pos') || lower.endsWith('.txt')) {
+              if (is3DModelFileName(basename)) {
+                collected3DFiles.push({
+                  name: basename,
+                  buffer: data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength),
+                });
+              } else if (lower.endsWith('.csv') || lower.endsWith('.pos') || lower.endsWith('.txt')) {
                 const text = decoder.decode(data);
                 if (isLikelyPnpName(basename)) {
                   detectedPnpText = text;
@@ -275,8 +338,14 @@ export const BoardViewerPage: React.FC = () => {
               }
             }
           } catch {
-            // Ignore errors in supplementary CSV extraction from zip
+            // Ignore errors in supplementary extraction from zip
           }
+        } else if (is3DModelFileName(file.name)) {
+          if (!mainName) {
+            mainName = file.name;
+          }
+          const buf = await file.arrayBuffer();
+          collected3DFiles.push({ name: file.name, buffer: buf });
         } else if (isGerberFileName(file.name)) {
           if (!mainName) {
             mainName = file.name;
@@ -300,14 +369,24 @@ export const BoardViewerPage: React.FC = () => {
         }
       }
 
-      if (collectedGerbers.length === 0) {
+      if (collectedGerbers.length === 0 && collected3DFiles.length === 0) {
         setErrorMessage(t('boardViewer.noGerberInUpload'));
         setIsProcessingUpload(false);
         return;
       }
 
-      setLocalGerberFiles(collectedGerbers);
-      setLocalArchiveName(mainName);
+      if (collected3DFiles.length > 0) {
+        setLocal3DFiles((prev) => [...prev, ...collected3DFiles]);
+        setSelected3DFileName(collected3DFiles[0]?.name);
+        if (collectedGerbers.length === 0) {
+          setViewType('3d');
+        }
+      }
+
+      if (collectedGerbers.length > 0) {
+        setLocalGerberFiles(collectedGerbers);
+        setLocalArchiveName(mainName);
+      }
 
       // Evaluate BOM / PnP if found
       if (detectedBomText || detectedPnpText) {
@@ -326,6 +405,25 @@ export const BoardViewerPage: React.FC = () => {
       setErrorMessage(msg);
     } finally {
       setIsProcessingUpload(false);
+    }
+  };
+
+  // Add supplementary 3D file to local viewer
+  const handleAddExtra3DFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) {
+      return;
+    }
+    try {
+      const buf = await file.arrayBuffer();
+      setLocal3DFiles((prev) => [
+        ...prev.filter((f) => f.name !== file.name),
+        { name: file.name, buffer: buf },
+      ]);
+      setSelected3DFileName(file.name);
+      setViewType('3d');
+    } catch (err) {
+      setErrorMessage(err instanceof Error ? err.message : String(err));
     }
   };
 
@@ -369,9 +467,11 @@ export const BoardViewerPage: React.FC = () => {
 
   const handleClearLocalFiles = () => {
     setLocalGerberFiles([]);
+    setLocal3DFiles([]);
     setLocalBomRows([]);
     setLocalPnpRows([]);
     setLocalArchiveName('');
+    setSelected3DFileName(undefined);
     setErrorMessage(null);
   };
 
@@ -415,8 +515,9 @@ export const BoardViewerPage: React.FC = () => {
             flexWrap: 'wrap',
           }}
         >
-          {/* Left Controls: Mode Switcher + Contextual Selectors */}
+          {/* Left Controls: Source Switcher + View Type + Contextual Selectors */}
           <Space size="middle" align="center" wrap>
+            {/* Source Switcher: Releases vs Upload */}
             <Segmented
               value={sourceMode}
               onChange={(val) => {
@@ -433,6 +534,35 @@ export const BoardViewerPage: React.FC = () => {
                   value: 'upload',
                   label: t('boardViewer.sourceUploadExternal'),
                   icon: <UploadOutlined aria-hidden="true" />,
+                },
+              ]}
+            />
+
+            <div
+              style={{
+                width: 1,
+                height: 20,
+                backgroundColor: tokens.colors.border,
+              }}
+              aria-hidden="true"
+            />
+
+            {/* View Type Switcher: 2D Layers vs 3D View */}
+            <Segmented
+              value={viewType}
+              onChange={(val) => {
+                setViewType(val as '2d' | '3d');
+              }}
+              options={[
+                {
+                  value: '2d',
+                  label: t('viewer3d.view2d'),
+                  icon: <FileSearchOutlined aria-hidden="true" />,
+                },
+                {
+                  value: '3d',
+                  label: t('viewer3d.view3d'),
+                  icon: <BoxPlotOutlined aria-hidden="true" />,
                 },
               ]}
             />
@@ -472,7 +602,7 @@ export const BoardViewerPage: React.FC = () => {
                   </Typography.Text>
                   <Select
                     value={selectedReleaseId}
-                    style={{ minWidth: 260 }}
+                    style={{ minWidth: 240 }}
                     placeholder={t('boardViewer.chooseReleasePlaceholder')}
                     options={releases.map((r) => ({
                       label: `${r.version_label} (${t(`releases.status.${r.status}`)})`,
@@ -484,16 +614,41 @@ export const BoardViewerPage: React.FC = () => {
                     }}
                   />
                 </Space>
+
+                {/* Optional 3D Model Picker when multiple 3D models exist in the release */}
+                {viewType === '3d' && effective3DItems.length > 1 && (
+                  <Space size={tokens.spacing.xs} align="center">
+                    <Typography.Text type="secondary">
+                      {t('viewer3d.selectModel')}:
+                    </Typography.Text>
+                    <Select
+                      value={active3DItem?.fileName}
+                      style={{ minWidth: 200 }}
+                      options={effective3DItems.map((item) => ({
+                        label: item.fileName,
+                        value: item.fileName,
+                      }))}
+                      onChange={(val) => setSelected3DFileName(val)}
+                    />
+                  </Space>
+                )}
               </Space>
             )}
 
-            {/* External Upload Status Badges */}
-            {sourceMode === 'upload' && localGerberFiles.length > 0 && (
+            {/* External Upload Status Badges and 3D Selector */}
+            {sourceMode === 'upload' && (localGerberFiles.length > 0 || local3DFiles.length > 0) && (
               <Space size={tokens.spacing.xs} align="center" wrap>
                 {localArchiveName && <Tag bordered>{localArchiveName}</Tag>}
-                <span className="revlog-count-pill">
-                  {t('boardViewer.loadedLayersCount', { count: localGerberFiles.length })}
-                </span>
+                {localGerberFiles.length > 0 && (
+                  <span className="revlog-count-pill">
+                    {t('boardViewer.loadedLayersCount', { count: localGerberFiles.length })}
+                  </span>
+                )}
+                {local3DFiles.length > 0 && (
+                  <span className="revlog-count-pill">
+                    {t('boardViewer.loaded3dCount', { count: local3DFiles.length })}
+                  </span>
+                )}
                 {localPnpRows.length > 0 && (
                   <span className="revlog-count-pill">
                     {t('boardViewer.loadedPnpCount', { count: localPnpRows.length })}
@@ -503,6 +658,23 @@ export const BoardViewerPage: React.FC = () => {
                   <span className="revlog-count-pill">
                     {t('boardViewer.loadedBomRowsCount', { count: localBomRows.length })}
                   </span>
+                )}
+
+                {viewType === '3d' && local3DFiles.length > 1 && (
+                  <Space size={tokens.spacing.xs} align="center" style={{ marginLeft: tokens.spacing.xs }}>
+                    <Typography.Text type="secondary">
+                      {t('viewer3d.selectModel')}:
+                    </Typography.Text>
+                    <Select
+                      value={activeLocal3D?.name}
+                      style={{ minWidth: 180 }}
+                      options={local3DFiles.map((f) => ({
+                        label: f.name,
+                        value: f.name,
+                      }))}
+                      onChange={(val) => setSelected3DFileName(val)}
+                    />
+                  </Space>
                 )}
               </Space>
             )}
@@ -527,8 +699,24 @@ export const BoardViewerPage: React.FC = () => {
               </Button>
             )}
 
-            {sourceMode === 'upload' && localGerberFiles.length > 0 && (
+            {sourceMode === 'upload' && (localGerberFiles.length > 0 || local3DFiles.length > 0) && (
               <Space size="small" align="center">
+                {/* Optional Supplementary 3D model upload */}
+                <input
+                  ref={extra3DInputRef}
+                  type="file"
+                  accept=".glb,.gltf,.stl"
+                  style={{ display: 'none' }}
+                  onChange={(e) => void handleAddExtra3DFile(e)}
+                />
+                <Button
+                  size="small"
+                  icon={<BoxPlotOutlined aria-hidden="true" />}
+                  onClick={() => extra3DInputRef.current?.click()}
+                >
+                  {t('boardViewer.upload3dPrompt')}
+                </Button>
+
                 {/* Optional Supplementary PnP / BOM upload buttons */}
                 <input
                   ref={extraPnpInputRef}
@@ -576,7 +764,7 @@ export const BoardViewerPage: React.FC = () => {
 
       {/* Main Body: Mode-dependent */}
       {sourceMode === 'upload' ? (
-        localGerberFiles.length === 0 ? (
+        localGerberFiles.length === 0 && local3DFiles.length === 0 ? (
           <Card style={{ padding: tokens.spacing.xl, textAlign: 'center' }}>
             {isProcessingUpload ? (
               <div style={{ padding: tokens.spacing.xxl }}>
@@ -588,7 +776,7 @@ export const BoardViewerPage: React.FC = () => {
             ) : (
               <Upload.Dragger
                 multiple
-                accept=".zip,.gtl,.gbl,.gto,.gbo,.gts,.gbs,.gm1,.gm2,.gko,.edge,.drl,.xln,.exc,.nc,.drd,.gbr,.ger,.csv,.pos,.txt"
+                accept=".zip,.gtl,.gbl,.gto,.gbo,.gts,.gbs,.gm1,.gm2,.gko,.edge,.drl,.xln,.exc,.nc,.drd,.gbr,.ger,.csv,.pos,.txt,.glb,.gltf,.stl"
                 showUploadList={false}
                 beforeUpload={(_file, fileList) => {
                   void handleProcessUploadedFiles(fileList as File[]);
@@ -608,15 +796,46 @@ export const BoardViewerPage: React.FC = () => {
               </Upload.Dragger>
             )}
           </Card>
+        ) : viewType === '2d' ? (
+          localGerberFiles.length === 0 ? (
+            <Card style={{ textAlign: 'center', padding: tokens.spacing.xl }}>
+              <Empty description={t('boardViewer.noGerberForRelease')}>
+                <Button type="primary" onClick={() => setViewType('3d')}>
+                  {t('viewer3d.view3d')}
+                </Button>
+              </Empty>
+            </Card>
+          ) : (
+            <Card styles={{ body: { padding: 0 } }}>
+              <GerberViewerModal
+                key={localArchiveName || 'uploaded-files'}
+                inline
+                files={localGerberFiles}
+                bomRows={localBomRows.length > 0 ? localBomRows : undefined}
+                pnpRows={localPnpRows.length > 0 ? localPnpRows : undefined}
+                title={localArchiveName || t('boardViewer.externalFilesTitle')}
+                height={720}
+              />
+            </Card>
+          )
+        ) : !activeLocal3D ? (
+          <Card style={{ textAlign: 'center', padding: tokens.spacing.xl }}>
+            <Empty description={t('viewer3d.noModelsInUpload')}>
+              <Button
+                type="primary"
+                icon={<UploadOutlined aria-hidden="true" />}
+                onClick={() => extra3DInputRef.current?.click()}
+              >
+                {t('boardViewer.upload3dPrompt')}
+              </Button>
+            </Empty>
+          </Card>
         ) : (
           <Card styles={{ body: { padding: 0 } }}>
-            <GerberViewerModal
-              key={localArchiveName || 'uploaded-files'}
-              inline
-              files={localGerberFiles}
-              bomRows={localBomRows.length > 0 ? localBomRows : undefined}
-              pnpRows={localPnpRows.length > 0 ? localPnpRows : undefined}
-              title={localArchiveName || t('boardViewer.externalFilesTitle')}
+            <ThreeViewer
+              key={activeLocal3D.name}
+              data={activeLocal3D.buffer}
+              fileName={activeLocal3D.name}
               height={720}
             />
           </Card>
@@ -643,34 +862,72 @@ export const BoardViewerPage: React.FC = () => {
             )}
           </Empty>
         </Card>
-      ) : effectiveGerberItems.length === 0 ? (
+      ) : viewType === '2d' ? (
+        effectiveGerberItems.length === 0 ? (
+          <Card style={{ textAlign: 'center', padding: tokens.spacing.xl }}>
+            <Empty description={t('boardViewer.noGerberForRelease')}>
+              {effective3DItems.length > 0 ? (
+                <Button type="primary" onClick={() => setViewType('3d')}>
+                  {t('viewer3d.view3d')}
+                </Button>
+              ) : (
+                selectedRelease &&
+                effectiveProductId && (
+                  <Button
+                    onClick={() =>
+                      navigate(
+                        `/projects/${projectId}/products/${effectiveProductId}/releases/${selectedRelease.id}`,
+                      )
+                    }
+                  >
+                    {t('boardViewer.goToReleaseItems')}
+                  </Button>
+                )
+              )}
+            </Empty>
+          </Card>
+        ) : (
+          <Card styles={{ body: { padding: 0 } }}>
+            <GerberViewerModal
+              key={selectedRelease?.id ?? 'preview'}
+              inline
+              multipleItems={effectiveGerberItems}
+              releaseId={selectedRelease?.id}
+              title={
+                selectedRelease
+                  ? `${selectedRelease.version_label} · ${t('gerber.viewerTitle')}`
+                  : t('gerber.viewerTitle')
+              }
+              height={720}
+            />
+          </Card>
+        )
+      ) : !active3DItem ? (
         <Card style={{ textAlign: 'center', padding: tokens.spacing.xl }}>
-          <Empty description={t('boardViewer.noGerberForRelease')}>
-            {selectedRelease && effectiveProductId && (
+          <Empty description={t('viewer3d.noModelsInRelease')}>
+            <Space size="small">
               <Button
-                onClick={() =>
-                  navigate(
-                    `/projects/${projectId}/products/${effectiveProductId}/releases/${selectedRelease.id}`,
-                  )
-                }
+                type="primary"
+                icon={<UploadOutlined aria-hidden="true" />}
+                onClick={() => {
+                  setSourceMode('upload');
+                  setViewType('3d');
+                }}
               >
-                {t('boardViewer.goToReleaseItems')}
+                {t('boardViewer.sourceUploadExternal')}
               </Button>
-            )}
+              <Button onClick={() => setViewType('2d')}>
+                {t('viewer3d.view2d')}
+              </Button>
+            </Space>
           </Empty>
         </Card>
       ) : (
         <Card styles={{ body: { padding: 0 } }}>
-          <GerberViewerModal
-            key={selectedRelease?.id ?? 'preview'}
-            inline
-            multipleItems={effectiveGerberItems}
-            releaseId={selectedRelease?.id}
-            title={
-              selectedRelease
-                ? `${selectedRelease.version_label} · ${t('gerber.viewerTitle')}`
-                : t('gerber.viewerTitle')
-            }
+          <ThreeViewer
+            key={`${selectedRelease?.id ?? 'preview'}-${active3DItem.fileName}`}
+            storagePath={active3DItem.storagePath}
+            fileName={active3DItem.fileName}
             height={720}
           />
         </Card>

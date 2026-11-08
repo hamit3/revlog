@@ -71,7 +71,7 @@ The MVP (auth, projects, categories, items, release wizard, release history, rel
   - Click a component to show its BOM row; click a BOM row to highlight the component.
   - Requires items 1 and 7.
 
-- [ ] 9. **3D viewer**
+- [x] 9. **3D viewer**
   - GLB and STL first, using three.js.
   - STEP support only after a separate evaluation of WebAssembly options and bundle size; record the decision in `DECISIONS.md`.
 

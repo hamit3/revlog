@@ -19,6 +19,7 @@ import {
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import {
+  BoxPlotOutlined,
   CheckCircleOutlined,
   CheckSquareOutlined,
   CloseCircleOutlined,
@@ -38,6 +39,7 @@ import { tokens } from '../../theme/tokens';
 import { PageHeaderTitle } from '../../components/PageHeaderTitle';
 import { StatusBadge } from '../../components/StatusBadge';
 import { GerberViewerModal } from '../../components/gerber/GerberViewerModal';
+import { Model3DViewerModal } from '../../components/three/Model3DViewerModal';
 import { ShareLinkModal } from './ShareLinkModal';
 import { useProductAccess } from '../../lib/useProjectAccess';
 import { formatDateTime, formatFileSize } from '../../lib/format';
@@ -45,6 +47,7 @@ import { computeManifestHash } from '../../lib/manifestHash';
 import { groupReleaseItemsByCategory } from '../../lib/releaseHelpers';
 import { evaluateReleaseCompleteness } from '../../lib/completeness';
 import { isAnyGerberItem } from '../../lib/gerber';
+import { is3DModelFileName } from '../../lib/model3d';
 import {
   buildReleasePackageManifest,
   buildReleasePackageZip,
@@ -104,6 +107,13 @@ export const ReleaseShowPage: React.FC = () => {
     fileName?: string | null;
     storagePath?: string | null;
     multipleItems?: { fileName: string; storagePath: string }[];
+  } | null>(null);
+
+  const [is3DModalOpen, setIs3DModalOpen] = useState<boolean>(false);
+  const [selected3DTarget, setSelected3DTarget] = useState<{
+    title?: string;
+    fileName: string;
+    storagePath?: string | null;
   } | null>(null);
 
   const [isApproveModalOpen, setIsApproveModalOpen] = useState<boolean>(false);
@@ -533,6 +543,23 @@ export const ReleaseShowPage: React.FC = () => {
       render: (_val: unknown, record: ReleaseItem) =>
         record.kind === 'file' ? (
           <div className="revlog-inline-row" style={{ justifyContent: 'flex-end', gap: 4 }}>
+            {is3DModelFileName(record.file_name) && (
+              <Tooltip title={t('viewer3d.viewIn3D')}>
+                <Button
+                  size="small"
+                  icon={<BoxPlotOutlined aria-hidden="true" />}
+                  aria-label={t('viewer3d.viewIn3D')}
+                  onClick={() => {
+                    setSelected3DTarget({
+                      title: record.title || record.file_name || undefined,
+                      fileName: record.file_name || '',
+                      storagePath: record.storage_path,
+                    });
+                    setIs3DModalOpen(true);
+                  }}
+                />
+              </Tooltip>
+            )}
             {isAnyGerberItem(record.file_name) && (
               <Tooltip title={t('gerber.openViewer')}>
                 <Button
@@ -1368,6 +1395,19 @@ export const ReleaseShowPage: React.FC = () => {
           setSelectedGerberTarget(null);
         }}
       />
+
+      {selected3DTarget && (
+        <Model3DViewerModal
+          open={is3DModalOpen}
+          title={selected3DTarget.title}
+          fileName={selected3DTarget.fileName}
+          storagePath={selected3DTarget.storagePath}
+          onClose={() => {
+            setIs3DModalOpen(false);
+            setSelected3DTarget(null);
+          }}
+        />
+      )}
     </Show>
   );
 };

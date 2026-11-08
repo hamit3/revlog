@@ -1,22 +1,69 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router';
 import { useTranslate } from '@refinedev/core';
 import { PageHeader } from '@refinedev/antd';
-import { Alert, Button, Card, Empty, Select, Space, Spin, Typography } from 'antd';
-import { HistoryOutlined } from '@ant-design/icons';
+import {
+  Alert,
+  Button,
+  Card,
+  Empty,
+  Segmented,
+  Select,
+  Space,
+  Spin,
+  Tag,
+  Typography,
+  Upload,
+} from 'antd';
+import {
+  DeleteOutlined,
+  HistoryOutlined,
+  InboxOutlined,
+  UploadOutlined,
+} from '@ant-design/icons';
+import { unzipSync } from 'fflate';
 import { PageHeaderTitle } from '../../components/PageHeaderTitle';
 import { GerberViewerModal } from '../../components/gerber/GerberViewerModal';
-import { isAnyGerberItem } from '../../lib/gerber';
+import {
+  extractFilesFromZip,
+  isAnyGerberItem,
+  isGerberArchiveFileName,
+  isGerberFileName,
+} from '../../lib/gerber';
+import {
+  evaluateBomPnpCsvTexts,
+  isLikelyBomName,
+  isLikelyPnpName,
+} from '../../lib/bomPnp';
 import { useProductAccess, useProjectAccess } from '../../lib/useProjectAccess';
 import { supabaseClient } from '../../providers/supabaseClient';
 import { tokens } from '../../theme/tokens';
-import type { Item, Product, Release, ReleaseItem } from '../../types/database';
+import type {
+  Item,
+  ParsedBomRow,
+  ParsedPnpRow,
+  Product,
+  Release,
+  ReleaseItem,
+} from '../../types/database';
 
 export const BoardViewerPage: React.FC = () => {
   const t = useTranslate();
   const navigate = useNavigate();
   const { projectId, productId } = useParams<{ projectId: string; productId?: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
+
+  // Source selection: from release or upload local external file
+  const [sourceMode, setSourceMode] = useState<'release' | 'upload'>('release');
+
+  // External file upload states
+  const [localGerberFiles, setLocalGerberFiles] = useState<{ name: string; content: string }[]>([]);
+  const [localBomRows, setLocalBomRows] = useState<ParsedBomRow[]>([]);
+  const [localPnpRows, setLocalPnpRows] = useState<ParsedPnpRow[]>([]);
+  const [localArchiveName, setLocalArchiveName] = useState<string>('');
+  const [isProcessingUpload, setIsProcessingUpload] = useState<boolean>(false);
+  const extraPnpInputRef = useRef<HTMLInputElement>(null);
+  const extraBomInputRef = useRef<HTMLInputElement>(null);
 
   const [products, setProducts] = useState<Product[]>([]);
   const [effectiveProductId, setEffectiveProductId] = useState<string | undefined>(productId);
@@ -183,6 +230,151 @@ export const BoardViewerPage: React.FC = () => {
     };
   }, [selectedRelease]);
 
+  // Handle external file upload processing
+  const handleProcessUploadedFiles = async (files: File[]) => {
+    if (files.length === 0) {
+      return;
+    }
+
+    setIsProcessingUpload(true);
+    setErrorMessage(null);
+
+    try {
+      const collectedGerbers: { name: string; content: string }[] = [];
+      let detectedBomText = '';
+      let detectedPnpText = '';
+      let mainName = '';
+
+      for (const file of files) {
+        if (isGerberArchiveFileName(file.name)) {
+          mainName = file.name;
+          const arrayBuf = await file.arrayBuffer();
+          const zipBytes = new Uint8Array(arrayBuf);
+
+          // Extract Gerbers
+          const extracted = extractFilesFromZip(zipBytes);
+          collectedGerbers.push(...extracted);
+
+          // Check if zip also contains BOM or PnP CSVs
+          try {
+            const unzipped = unzipSync(zipBytes);
+            const decoder = new TextDecoder('utf-8', { fatal: false });
+            for (const [path, data] of Object.entries(unzipped)) {
+              if (path.endsWith('/') || data.length === 0) {
+                continue;
+              }
+              const basename = path.split('/').pop() ?? path;
+              const lower = basename.toLowerCase();
+              if (lower.endsWith('.csv') || lower.endsWith('.pos') || lower.endsWith('.txt')) {
+                const text = decoder.decode(data);
+                if (isLikelyPnpName(basename)) {
+                  detectedPnpText = text;
+                } else if (isLikelyBomName(basename)) {
+                  detectedBomText = text;
+                }
+              }
+            }
+          } catch {
+            // Ignore errors in supplementary CSV extraction from zip
+          }
+        } else if (isGerberFileName(file.name)) {
+          if (!mainName) {
+            mainName = file.name;
+          }
+          const text = await file.text();
+          collectedGerbers.push({ name: file.name, content: text });
+        } else {
+          const lower = file.name.toLowerCase();
+          if (lower.endsWith('.csv') || lower.endsWith('.pos') || lower.endsWith('.txt')) {
+            const text = await file.text();
+            if (isLikelyPnpName(file.name)) {
+              detectedPnpText = text;
+            } else if (isLikelyBomName(file.name)) {
+              detectedBomText = text;
+            } else if (!detectedBomText) {
+              detectedBomText = text;
+            } else if (!detectedPnpText) {
+              detectedPnpText = text;
+            }
+          }
+        }
+      }
+
+      if (collectedGerbers.length === 0) {
+        setErrorMessage(t('boardViewer.noGerberInUpload'));
+        setIsProcessingUpload(false);
+        return;
+      }
+
+      setLocalGerberFiles(collectedGerbers);
+      setLocalArchiveName(mainName);
+
+      // Evaluate BOM / PnP if found
+      if (detectedBomText || detectedPnpText) {
+        const evalResult = evaluateBomPnpCsvTexts({
+          bomText: detectedBomText || null,
+          pnpText: detectedPnpText || null,
+        });
+        setLocalBomRows(evalResult.parsedBom);
+        setLocalPnpRows(evalResult.parsedPnp);
+      } else {
+        setLocalBomRows([]);
+        setLocalPnpRows([]);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setErrorMessage(msg);
+    } finally {
+      setIsProcessingUpload(false);
+    }
+  };
+
+  // Add supplementary PnP file to local viewer
+  const handleAddExtraPnpFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) {
+      return;
+    }
+    try {
+      const text = await file.text();
+      const evalResult = evaluateBomPnpCsvTexts({
+        pnpText: text,
+      });
+      if (evalResult.parsedPnp.length > 0) {
+        setLocalPnpRows(evalResult.parsedPnp);
+      }
+    } catch (err) {
+      setErrorMessage(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  // Add supplementary BOM file to local viewer
+  const handleAddExtraBomFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) {
+      return;
+    }
+    try {
+      const text = await file.text();
+      const evalResult = evaluateBomPnpCsvTexts({
+        bomText: text,
+      });
+      if (evalResult.parsedBom.length > 0) {
+        setLocalBomRows(evalResult.parsedBom);
+      }
+    } catch (err) {
+      setErrorMessage(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const handleClearLocalFiles = () => {
+    setLocalGerberFiles([]);
+    setLocalBomRows([]);
+    setLocalPnpRows([]);
+    setLocalArchiveName('');
+    setErrorMessage(null);
+  };
+
   const effectiveProject = project || fallbackProject;
   if (!effectiveProject) {
     return <Alert type="error" showIcon message={t('projects.notFound')} />;
@@ -208,7 +400,7 @@ export const BoardViewerPage: React.FC = () => {
         />
       )}
 
-      {/* Selectors Card: Product & Release */}
+      {/* Selectors Card: Source Mode Switcher + Context Selectors */}
       <Card style={{ marginBottom: tokens.spacing.md }}>
         <div
           style={{
@@ -219,71 +411,217 @@ export const BoardViewerPage: React.FC = () => {
             flexWrap: 'wrap',
           }}
         >
+          {/* Source Switcher */}
           <Space size="middle" wrap>
-            {!productId && products.length > 0 && (
-              <div>
-                <Typography.Text
-                  type="secondary"
-                  style={{ display: 'block', marginBottom: 4 }}
-                >
-                  {t('nav.product')}
-                </Typography.Text>
-                <Select
-                  value={effectiveProductId}
-                  style={{ minWidth: 200 }}
-                  options={products.map((p) => ({ label: p.name, value: p.id }))}
-                  onChange={(val) => {
-                    setEffectiveProductId(val);
-                    setSelectedReleaseId(undefined);
-                  }}
-                />
-              </div>
-            )}
-
             <div>
               <Typography.Text
                 type="secondary"
                 style={{ display: 'block', marginBottom: 4 }}
               >
-                {t('boardViewer.selectRelease')}
+                {t('boardViewer.sourceMode')}
               </Typography.Text>
-              <Select
-                value={selectedReleaseId}
-                style={{ minWidth: 260 }}
-                placeholder={t('boardViewer.chooseReleasePlaceholder')}
-                options={releases.map((r) => ({
-                  label: `${r.version_label} (${t(`releases.status.${r.status}`)})`,
-                  value: r.id,
-                }))}
+              <Segmented
+                value={sourceMode}
                 onChange={(val) => {
-                  setSelectedReleaseId(val);
-                  setSearchParams({ releaseId: val });
+                  setSourceMode(val as 'release' | 'upload');
+                  setErrorMessage(null);
                 }}
+                options={[
+                  {
+                    value: 'release',
+                    label: t('boardViewer.sourceFromRelease'),
+                    icon: <HistoryOutlined aria-hidden="true" />,
+                  },
+                  {
+                    value: 'upload',
+                    label: t('boardViewer.sourceUploadExternal'),
+                    icon: <UploadOutlined aria-hidden="true" />,
+                  },
+                ]}
               />
             </div>
+
+            {/* Release Mode Selectors */}
+            {sourceMode === 'release' && (
+              <>
+                {!productId && products.length > 0 && (
+                  <div>
+                    <Typography.Text
+                      type="secondary"
+                      style={{ display: 'block', marginBottom: 4 }}
+                    >
+                      {t('nav.product')}
+                    </Typography.Text>
+                    <Select
+                      value={effectiveProductId}
+                      style={{ minWidth: 200 }}
+                      options={products.map((p) => ({ label: p.name, value: p.id }))}
+                      onChange={(val) => {
+                        setEffectiveProductId(val);
+                        setSelectedReleaseId(undefined);
+                      }}
+                    />
+                  </div>
+                )}
+
+                <div>
+                  <Typography.Text
+                    type="secondary"
+                    style={{ display: 'block', marginBottom: 4 }}
+                  >
+                    {t('boardViewer.selectRelease')}
+                  </Typography.Text>
+                  <Select
+                    value={selectedReleaseId}
+                    style={{ minWidth: 260 }}
+                    placeholder={t('boardViewer.chooseReleasePlaceholder')}
+                    options={releases.map((r) => ({
+                      label: `${r.version_label} (${t(`releases.status.${r.status}`)})`,
+                      value: r.id,
+                    }))}
+                    onChange={(val) => {
+                      setSelectedReleaseId(val);
+                      setSearchParams({ releaseId: val });
+                    }}
+                  />
+                </div>
+              </>
+            )}
+
+            {/* External Upload Status Badges */}
+            {sourceMode === 'upload' && localGerberFiles.length > 0 && (
+              <div className="revlog-inline-row" style={{ gap: tokens.spacing.xs, alignItems: 'flex-end', paddingTop: 20 }}>
+                {localArchiveName && <Tag bordered>{localArchiveName}</Tag>}
+                <span className="revlog-count-pill">
+                  {t('boardViewer.loadedLayersCount', { count: localGerberFiles.length })}
+                </span>
+                {localPnpRows.length > 0 && (
+                  <span className="revlog-count-pill">
+                    {t('boardViewer.loadedPnpCount', { count: localPnpRows.length })}
+                  </span>
+                )}
+                {localBomRows.length > 0 && (
+                  <span className="revlog-count-pill">
+                    {t('boardViewer.loadedBomRowsCount', { count: localBomRows.length })}
+                  </span>
+                )}
+              </div>
+            )}
           </Space>
 
-          {selectedRelease && (
-            <Button
-              icon={<HistoryOutlined aria-hidden="true" />}
-              onClick={() => {
-                if (effectiveProductId) {
-                  navigate(
-                    `/projects/${projectId}/products/${effectiveProductId}/releases/${selectedRelease.id}`,
-                  );
-                } else {
-                  navigate(`/projects/${projectId}/releases/${selectedRelease.id}`);
-                }
-              }}
-            >
-              {t('boardViewer.viewReleaseDetails')}
-            </Button>
-          )}
+          {/* Right Action Buttons */}
+          <div>
+            {sourceMode === 'release' && selectedRelease && (
+              <Button
+                icon={<HistoryOutlined aria-hidden="true" />}
+                onClick={() => {
+                  if (effectiveProductId) {
+                    navigate(
+                      `/projects/${projectId}/products/${effectiveProductId}/releases/${selectedRelease.id}`,
+                    );
+                  } else {
+                    navigate(`/projects/${projectId}/releases/${selectedRelease.id}`);
+                  }
+                }}
+              >
+                {t('boardViewer.viewReleaseDetails')}
+              </Button>
+            )}
+
+            {sourceMode === 'upload' && localGerberFiles.length > 0 && (
+              <Space size="small">
+                {/* Optional Supplementary PnP / BOM upload buttons */}
+                <input
+                  ref={extraPnpInputRef}
+                  type="file"
+                  accept=".csv,.pos,.txt"
+                  style={{ display: 'none' }}
+                  onChange={(e) => void handleAddExtraPnpFile(e)}
+                />
+                <Button
+                  size="small"
+                  icon={<UploadOutlined aria-hidden="true" />}
+                  onClick={() => extraPnpInputRef.current?.click()}
+                >
+                  {t('boardViewer.uploadPnpPrompt')}
+                </Button>
+
+                <input
+                  ref={extraBomInputRef}
+                  type="file"
+                  accept=".csv,.txt"
+                  style={{ display: 'none' }}
+                  onChange={(e) => void handleAddExtraBomFile(e)}
+                />
+                <Button
+                  size="small"
+                  icon={<UploadOutlined aria-hidden="true" />}
+                  onClick={() => extraBomInputRef.current?.click()}
+                >
+                  {t('boardViewer.uploadBomPrompt')}
+                </Button>
+
+                <Button
+                  danger
+                  icon={<DeleteOutlined aria-hidden="true" />}
+                  onClick={handleClearLocalFiles}
+                >
+                  {t('boardViewer.clearFiles')}
+                </Button>
+              </Space>
+            )}
+          </div>
         </div>
       </Card>
 
-      {/* Viewer Main Body */}
-      {isLoading ? (
+      {/* Main Body: Mode-dependent */}
+      {sourceMode === 'upload' ? (
+        localGerberFiles.length === 0 ? (
+          <Card style={{ padding: tokens.spacing.xl, textAlign: 'center' }}>
+            {isProcessingUpload ? (
+              <div style={{ padding: tokens.spacing.xxl }}>
+                <Spin />
+                <div style={{ marginTop: tokens.spacing.md }}>
+                  <Typography.Text type="secondary">{t('boardViewer.processingFiles')}</Typography.Text>
+                </div>
+              </div>
+            ) : (
+              <Upload.Dragger
+                multiple
+                accept=".zip,.gtl,.gbl,.gto,.gbo,.gts,.gbs,.gm1,.gm2,.gko,.edge,.drl,.xln,.exc,.nc,.drd,.gbr,.ger,.csv,.pos,.txt"
+                showUploadList={false}
+                beforeUpload={(_file, fileList) => {
+                  void handleProcessUploadedFiles(fileList as File[]);
+                  return false;
+                }}
+                style={{ padding: tokens.spacing.xl }}
+              >
+                <p className="ant-upload-drag-icon">
+                  <InboxOutlined style={{ color: tokens.colors.accent }} />
+                </p>
+                <p className="ant-upload-text" style={{ fontWeight: 600, color: tokens.colors.textPrimary }}>
+                  {t('boardViewer.uploadDraggerTitle')}
+                </p>
+                <p className="ant-upload-hint" style={{ color: tokens.colors.textSecondary, maxWidth: 540, margin: '0 auto' }}>
+                  {t('boardViewer.uploadDraggerHint')}
+                </p>
+              </Upload.Dragger>
+            )}
+          </Card>
+        ) : (
+          <Card styles={{ body: { padding: 0 } }}>
+            <GerberViewerModal
+              key={localArchiveName || 'uploaded-files'}
+              inline
+              files={localGerberFiles}
+              bomRows={localBomRows.length > 0 ? localBomRows : undefined}
+              pnpRows={localPnpRows.length > 0 ? localPnpRows : undefined}
+              title={localArchiveName || t('boardViewer.externalFilesTitle')}
+              height={720}
+            />
+          </Card>
+        )
+      ) : isLoading ? (
         <Card style={{ textAlign: 'center', padding: tokens.spacing.xxl }}>
           <Spin />
           <div style={{ marginTop: tokens.spacing.sm }}>

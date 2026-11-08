@@ -799,6 +799,20 @@
     "viewReleaseDetails": "Release details",
     "noReleases": "No releases found for this product.",
     "noGerberForRelease": "No Gerber files found for this release. Upload Gerber or drill files (.zip, .gbr, .gtl) in release items to inspect the board.",
-    "goToReleaseItems": "Go to release files"
+    "goToReleaseItems": "Go to release files",
+    "sourceMode": "Source",
+    "sourceFromRelease": "From Release",
+    "sourceUploadExternal": "Upload External Files",
+    "uploadDraggerTitle": "Click or drag Gerber zip archive or layer files here",
+    "uploadDraggerHint": "Supports .zip archives containing Gerber/drill files, individual CAM files (.gtl, .gbl, .gbr, .drl), and optional PnP/BOM CSV files.",
+    "externalFilesTitle": "External Board Preview",
+    "clearFiles": "Clear and upload new files",
+    "loadedLayersCount": "{{count}} Gerber file(s) loaded",
+    "loadedBomRowsCount": "{{count}} BOM row(s)",
+    "loadedPnpCount": "{{count}} PnP component(s)",
+    "uploadPnpPrompt": "Add PnP file",
+    "uploadBomPrompt": "Add BOM file",
+    "processingFiles": "Processing uploaded files...",
+    "noGerberInUpload": "No valid Gerber or drill layers found in the uploaded file(s). Please verify file extensions (.zip, .gbr, .gtl, .drl, etc.)."
   }
 }

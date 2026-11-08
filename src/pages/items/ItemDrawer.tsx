@@ -14,14 +14,16 @@ import {
   Typography,
   Upload,
 } from 'antd';
-import { EyeOutlined, FileOutlined, InboxOutlined, LinkOutlined } from '@ant-design/icons';
+import { EyeOutlined, FileOutlined, FilePdfOutlined, InboxOutlined, LinkOutlined } from '@ant-design/icons';
 import { tokens } from '../../theme/tokens';
 import { appEnv } from '../../lib/env';
 import { sha256HexFromFile } from '../../lib/sha256';
 import { formatFileSize } from '../../lib/format';
 import { uploadProjectFileWithProgress, validateUploadFileSize } from '../../lib/storage';
 import { isAnyGerberItem } from '../../lib/gerber';
+import { isPdfFileName, isSchematicFileName } from '../../lib/pdf';
 import { GerberViewerModal } from '../../components/gerber/GerberViewerModal';
+import { PdfViewerModal } from '../../components/pdf/PdfViewerModal';
 import { supabaseClient } from '../../providers/supabaseClient';
 import type { Category, Item, ItemKind } from '../../types/database';
 
@@ -78,6 +80,7 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isGerberModalOpen, setIsGerberModalOpen] = useState(false);
+  const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
 
   useEffect(() => {
     if (!open) {
@@ -389,6 +392,23 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
                 </div>
               )}
 
+            {isEditing &&
+              editingItem?.file_name &&
+              isPdfFileName(editingItem.file_name) &&
+              editingItem.storage_path && (
+                <div style={{ marginBottom: tokens.spacing.sm }}>
+                  <Button
+                    size="small"
+                    icon={<FilePdfOutlined aria-hidden="true" />}
+                    onClick={() => setIsPdfModalOpen(true)}
+                  >
+                    {isSchematicFileName(editingItem.file_name)
+                      ? t('pdf.viewSchematic')
+                      : t('pdf.viewPdf')}
+                  </Button>
+                </div>
+              )}
+
             <Upload.Dragger
               name="file"
               multiple={false}
@@ -448,6 +468,20 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
                   },
                 ]}
               />
+            )}
+
+            {selectedFile && isPdfFileName(selectedFile.name) && (
+              <div style={{ marginTop: tokens.spacing.xs }}>
+                <Button
+                  size="small"
+                  icon={<FilePdfOutlined aria-hidden="true" />}
+                  onClick={() => setIsPdfModalOpen(true)}
+                >
+                  {isSchematicFileName(selectedFile.name)
+                    ? t('pdf.viewSchematic')
+                    : t('pdf.viewPdf')}
+                </Button>
+              </div>
             )}
 
             {uploadPercent !== null && (
@@ -516,6 +550,20 @@ export const ItemDrawer: React.FC<ItemDrawerProps> = ({
           onClose={() => setIsGerberModalOpen(false)}
         />
       )}
+
+      <PdfViewerModal
+        open={isPdfModalOpen}
+        title={
+          selectedFile?.name ||
+          editingItem?.title ||
+          editingItem?.file_name ||
+          undefined
+        }
+        fileName={selectedFile?.name || editingItem?.file_name}
+        file={selectedFile ?? undefined}
+        storagePath={!selectedFile ? editingItem?.storage_path : undefined}
+        onClose={() => setIsPdfModalOpen(false)}
+      />
     </Drawer>
   );
 };

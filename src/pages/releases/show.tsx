@@ -28,6 +28,7 @@ import {
   ExclamationCircleOutlined,
   EyeOutlined,
   FileOutlined,
+  FilePdfOutlined,
   FileSearchOutlined,
   HistoryOutlined,
   LinkOutlined,
@@ -40,6 +41,7 @@ import { PageHeaderTitle } from '../../components/PageHeaderTitle';
 import { StatusBadge } from '../../components/StatusBadge';
 import { GerberViewerModal } from '../../components/gerber/GerberViewerModal';
 import { Model3DViewerModal } from '../../components/three/Model3DViewerModal';
+import { PdfViewerModal } from '../../components/pdf/PdfViewerModal';
 import { ShareLinkModal } from './ShareLinkModal';
 import { useProductAccess } from '../../lib/useProjectAccess';
 import { formatDateTime, formatFileSize } from '../../lib/format';
@@ -48,6 +50,7 @@ import { groupReleaseItemsByCategory } from '../../lib/releaseHelpers';
 import { evaluateReleaseCompleteness } from '../../lib/completeness';
 import { isAnyGerberItem } from '../../lib/gerber';
 import { is3DModelFileName } from '../../lib/model3d';
+import { isPdfFileName, isSchematicFileName } from '../../lib/pdf';
 import {
   buildReleasePackageManifest,
   buildReleasePackageZip,
@@ -113,6 +116,13 @@ export const ReleaseShowPage: React.FC = () => {
   const [selected3DTarget, setSelected3DTarget] = useState<{
     title?: string;
     fileName: string;
+    storagePath?: string | null;
+  } | null>(null);
+
+  const [isPdfModalOpen, setIsPdfModalOpen] = useState<boolean>(false);
+  const [selectedPdfTarget, setSelectedPdfTarget] = useState<{
+    title?: string;
+    fileName?: string | null;
     storagePath?: string | null;
   } | null>(null);
 
@@ -556,6 +566,29 @@ export const ReleaseShowPage: React.FC = () => {
                       storagePath: record.storage_path,
                     });
                     setIs3DModalOpen(true);
+                  }}
+                />
+              </Tooltip>
+            )}
+            {isPdfFileName(record.file_name) && (
+              <Tooltip
+                title={
+                  isSchematicFileName(record.file_name)
+                    ? t('pdf.viewSchematic')
+                    : t('pdf.viewPdf')
+                }
+              >
+                <Button
+                  size="small"
+                  icon={<FilePdfOutlined aria-hidden="true" />}
+                  aria-label={`${t('pdf.viewPdf')}: ${record.title || record.file_name || ''}`}
+                  onClick={() => {
+                    setSelectedPdfTarget({
+                      title: record.title || record.file_name || undefined,
+                      fileName: record.file_name,
+                      storagePath: record.storage_path,
+                    });
+                    setIsPdfModalOpen(true);
                   }}
                 />
               </Tooltip>
@@ -1405,6 +1438,19 @@ export const ReleaseShowPage: React.FC = () => {
           onClose={() => {
             setIs3DModalOpen(false);
             setSelected3DTarget(null);
+          }}
+        />
+      )}
+
+      {selectedPdfTarget && (
+        <PdfViewerModal
+          open={isPdfModalOpen}
+          title={selectedPdfTarget.title}
+          fileName={selectedPdfTarget.fileName}
+          storagePath={selectedPdfTarget.storagePath}
+          onClose={() => {
+            setIsPdfModalOpen(false);
+            setSelectedPdfTarget(null);
           }}
         />
       )}

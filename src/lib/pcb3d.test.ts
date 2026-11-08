@@ -64,3 +64,4 @@ describe('pcb3d domain logic', () => {
     expect((mesh.material as unknown[]).length).toBe(6);
   });
 });
+

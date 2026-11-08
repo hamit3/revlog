@@ -18,6 +18,7 @@ import {
 import {
   BoxPlotOutlined,
   DeleteOutlined,
+  FilePdfOutlined,
   FileSearchOutlined,
   HistoryOutlined,
   InboxOutlined,
@@ -27,6 +28,7 @@ import { unzipSync } from 'fflate';
 import { PageHeaderTitle } from '../../components/PageHeaderTitle';
 import { GerberViewerModal } from '../../components/gerber/GerberViewerModal';
 import { ThreeViewer } from '../../components/three/ThreeViewer';
+import { PdfViewer } from '../../components/pdf/PdfViewer';
 import {
   extractFilesFromZip,
   isAnyGerberItem,
@@ -34,6 +36,7 @@ import {
   isGerberFileName,
 } from '../../lib/gerber';
 import { is3DModelFileName } from '../../lib/model3d';
+import { isPdfFileName } from '../../lib/pdf';
 import {
   evaluateBomPnpCsvTexts,
   isLikelyBomName,
@@ -51,6 +54,94 @@ import type {
   ReleaseItem,
 } from '../../types/database';
 
+interface ReleasePdfViewProps {
+  storagePath: string;
+  fileName: string;
+  title?: string;
+}
+
+const ReleasePdfView: React.FC<ReleasePdfViewProps> = ({ storagePath, fileName, title }) => {
+  const t = useTranslate();
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    let url: string | null = null;
+
+    void (async () => {
+      try {
+        const { data, error } = await supabaseClient.storage
+          .from('project-files')
+          .download(storagePath);
+
+        if (error || !data) {
+          throw new Error(error?.message ?? t('pdf.downloadError'));
+        }
+
+        if (!active) {
+          return;
+        }
+
+        const pdfBlob = new Blob([data], { type: 'application/pdf' });
+        url = URL.createObjectURL(pdfBlob);
+        setBlobUrl(url);
+      } catch (err) {
+        if (active) {
+          setErrorMessage(err instanceof Error ? err.message : t('common.errorPrefix'));
+        }
+      } finally {
+        if (active) {
+          setIsLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      active = false;
+      if (url) {
+        URL.revokeObjectURL(url);
+      }
+    };
+  }, [storagePath, t]);
+
+  if (isLoading) {
+    return (
+      <Card style={{ textAlign: 'center', padding: tokens.spacing.xxl }}>
+        <Spin />
+        <div style={{ marginTop: tokens.spacing.sm }}>
+          <Typography.Text type="secondary">{t('pdf.loadingDocument')}</Typography.Text>
+        </div>
+      </Card>
+    );
+  }
+
+  if (errorMessage) {
+    return (
+      <Card style={{ padding: tokens.spacing.md }}>
+        <Alert type="error" showIcon message={errorMessage} />
+      </Card>
+    );
+  }
+
+  if (!blobUrl) {
+    return null;
+  }
+
+  return (
+    <Card styles={{ body: { padding: 0 } }}>
+      <PdfViewer
+        blobUrl={blobUrl}
+        fileName={fileName}
+        title={title || fileName}
+        height={720}
+        downloadFileName={fileName}
+      />
+    </Card>
+  );
+};
+
 export const BoardViewerPage: React.FC = () => {
   const t = useTranslate();
   const navigate = useNavigate();
@@ -60,13 +151,15 @@ export const BoardViewerPage: React.FC = () => {
   // Source selection: from release or upload local external file
   const [sourceMode, setSourceMode] = useState<'release' | 'upload'>('release');
 
-  // View type selection: 2D Gerber & PnP layer view vs 3D model view
-  const [viewType, setViewType] = useState<'2d' | '3d'>('2d');
+  // View type selection: 2D Gerber & PnP layer view vs 3D model view vs Schematic PDF
+  const [viewType, setViewType] = useState<'2d' | '3d' | 'schematic'>('2d');
   const [selected3DFileName, setSelected3DFileName] = useState<string | undefined>(undefined);
+  const [selectedPdfFileName, setSelectedPdfFileName] = useState<string | undefined>(undefined);
 
   // External file upload states
   const [localGerberFiles, setLocalGerberFiles] = useState<{ name: string; content: string }[]>([]);
   const [local3DFiles, setLocal3DFiles] = useState<{ name: string; buffer: ArrayBuffer }[]>([]);
+  const [localPdfFiles, setLocalPdfFiles] = useState<{ name: string; blobUrl: string }[]>([]);
   const [localBomRows, setLocalBomRows] = useState<ParsedBomRow[]>([]);
   const [localPnpRows, setLocalPnpRows] = useState<ParsedPnpRow[]>([]);
   const [localArchiveName, setLocalArchiveName] = useState<string>('');
@@ -74,6 +167,7 @@ export const BoardViewerPage: React.FC = () => {
   const extraPnpInputRef = useRef<HTMLInputElement>(null);
   const extraBomInputRef = useRef<HTMLInputElement>(null);
   const extra3DInputRef = useRef<HTMLInputElement>(null);
+  const extraPdfInputRef = useRef<HTMLInputElement>(null);
 
   const [products, setProducts] = useState<Product[]>([]);
   const [effectiveProductId, setEffectiveProductId] = useState<string | undefined>(productId);
@@ -92,6 +186,9 @@ export const BoardViewerPage: React.FC = () => {
   >([]);
   const [release3DItemsFromDb, setRelease3DItemsFromDb] = useState<
     { fileName: string; storagePath: string }[]
+  >([]);
+  const [releasePdfItemsFromDb, setReleasePdfItemsFromDb] = useState<
+    { fileName: string; storagePath: string; title?: string }[]
   >([]);
 
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -245,6 +342,46 @@ export const BoardViewerPage: React.FC = () => {
     return local3DFiles[0] ?? null;
   }, [local3DFiles, selected3DFileName]);
 
+  const productPdfItems = useMemo(() => {
+    return productItems
+      .filter((i) => isPdfFileName(i.file_name) && i.storage_path && i.file_name)
+      .map((i) => ({
+        fileName: i.file_name!,
+        storagePath: i.storage_path!,
+        title: i.title || undefined,
+      }));
+  }, [productItems]);
+
+  const effectivePdfItems = useMemo(() => {
+    return selectedRelease ? releasePdfItemsFromDb : productPdfItems;
+  }, [selectedRelease, releasePdfItemsFromDb, productPdfItems]);
+
+  const activePdfItem = useMemo(() => {
+    if (effectivePdfItems.length === 0) {
+      return null;
+    }
+    if (selectedPdfFileName) {
+      const match = effectivePdfItems.find((i) => i.fileName === selectedPdfFileName);
+      if (match) {
+        return match;
+      }
+    }
+    return effectivePdfItems[0] ?? null;
+  }, [effectivePdfItems, selectedPdfFileName]);
+
+  const activeLocalPdf = useMemo(() => {
+    if (localPdfFiles.length === 0) {
+      return null;
+    }
+    if (selectedPdfFileName) {
+      const match = localPdfFiles.find((f) => f.name === selectedPdfFileName);
+      if (match) {
+        return match;
+      }
+    }
+    return localPdfFiles[0] ?? null;
+  }, [localPdfFiles, selectedPdfFileName]);
+
   // Load Gerber and 3D files available for the selected release
   useEffect(() => {
     if (!selectedRelease) {
@@ -278,8 +415,17 @@ export const BoardViewerPage: React.FC = () => {
         .filter((ri) => is3DModelFileName(ri.file_name))
         .map((ri) => ({ fileName: ri.file_name!, storagePath: ri.storage_path! }));
 
+      const pdfs = allItems
+        .filter((ri) => isPdfFileName(ri.file_name))
+        .map((ri) => ({
+          fileName: ri.file_name!,
+          storagePath: ri.storage_path!,
+          title: ri.title || undefined,
+        }));
+
       setReleaseItemsFromDb(gerbers);
       setRelease3DItemsFromDb(models3d);
+      setReleasePdfItemsFromDb(pdfs);
     })();
 
     return () => {
@@ -299,6 +445,7 @@ export const BoardViewerPage: React.FC = () => {
     try {
       const collectedGerbers: { name: string; content: string }[] = [];
       const collected3DFiles: { name: string; buffer: ArrayBuffer }[] = [];
+      const collectedPdfFiles: { name: string; blobUrl: string }[] = [];
       let detectedBomText = '';
       let detectedPnpText = '';
       let mainName = '';
@@ -313,7 +460,7 @@ export const BoardViewerPage: React.FC = () => {
           const extracted = extractFilesFromZip(zipBytes);
           collectedGerbers.push(...extracted);
 
-          // Check if zip also contains BOM, PnP CSVs, or 3D models
+          // Check if zip also contains BOM, PnP CSVs, 3D models, or PDFs
           try {
             const unzipped = unzipSync(zipBytes);
             const decoder = new TextDecoder('utf-8', { fatal: false });
@@ -327,6 +474,12 @@ export const BoardViewerPage: React.FC = () => {
                 collected3DFiles.push({
                   name: basename,
                   buffer: data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength),
+                });
+              } else if (isPdfFileName(basename)) {
+                const pdfBlob = new Blob([data], { type: 'application/pdf' });
+                collectedPdfFiles.push({
+                  name: basename,
+                  blobUrl: URL.createObjectURL(pdfBlob),
                 });
               } else if (lower.endsWith('.csv') || lower.endsWith('.pos') || lower.endsWith('.txt')) {
                 const text = decoder.decode(data);
@@ -346,6 +499,14 @@ export const BoardViewerPage: React.FC = () => {
           }
           const buf = await file.arrayBuffer();
           collected3DFiles.push({ name: file.name, buffer: buf });
+        } else if (isPdfFileName(file.name)) {
+          if (!mainName) {
+            mainName = file.name;
+          }
+          collectedPdfFiles.push({
+            name: file.name,
+            blobUrl: URL.createObjectURL(file),
+          });
         } else if (isGerberFileName(file.name)) {
           if (!mainName) {
             mainName = file.name;
@@ -369,10 +530,22 @@ export const BoardViewerPage: React.FC = () => {
         }
       }
 
-      if (collectedGerbers.length === 0 && collected3DFiles.length === 0) {
+      if (
+        collectedGerbers.length === 0 &&
+        collected3DFiles.length === 0 &&
+        collectedPdfFiles.length === 0
+      ) {
         setErrorMessage(t('boardViewer.noGerberInUpload'));
         setIsProcessingUpload(false);
         return;
+      }
+
+      if (collectedPdfFiles.length > 0) {
+        setLocalPdfFiles((prev) => [...prev, ...collectedPdfFiles]);
+        setSelectedPdfFileName(collectedPdfFiles[0]?.name);
+        if (collectedGerbers.length === 0 && collected3DFiles.length === 0) {
+          setViewType('schematic');
+        }
       }
 
       if (collected3DFiles.length > 0) {
@@ -465,13 +638,34 @@ export const BoardViewerPage: React.FC = () => {
     }
   };
 
+  // Add supplementary PDF / schematic file to local viewer
+  const handleAddExtraPdfFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) {
+      return;
+    }
+    const blobUrl = URL.createObjectURL(file);
+    setLocalPdfFiles((prev) => [
+      ...prev.filter((f) => f.name !== file.name),
+      { name: file.name, blobUrl },
+    ]);
+    setSelectedPdfFileName(file.name);
+    setViewType('schematic');
+    e.target.value = '';
+  };
+
   const handleClearLocalFiles = () => {
+    for (const pdf of localPdfFiles) {
+      URL.revokeObjectURL(pdf.blobUrl);
+    }
     setLocalGerberFiles([]);
     setLocal3DFiles([]);
+    setLocalPdfFiles([]);
     setLocalBomRows([]);
     setLocalPnpRows([]);
     setLocalArchiveName('');
     setSelected3DFileName(undefined);
+    setSelectedPdfFileName(undefined);
     setErrorMessage(null);
   };
 
@@ -547,11 +741,11 @@ export const BoardViewerPage: React.FC = () => {
               aria-hidden="true"
             />
 
-            {/* View Type Switcher: 2D Layers vs 3D View */}
+            {/* View Type Switcher: 2D Layers vs 3D View vs Schematic */}
             <Segmented
               value={viewType}
               onChange={(val) => {
-                setViewType(val as '2d' | '3d');
+                setViewType(val as '2d' | '3d' | 'schematic');
               }}
               options={[
                 {
@@ -563,6 +757,11 @@ export const BoardViewerPage: React.FC = () => {
                   value: '3d',
                   label: t('viewer3d.view3d'),
                   icon: <BoxPlotOutlined aria-hidden="true" />,
+                },
+                {
+                  value: 'schematic',
+                  label: t('pdf.schematicTab'),
+                  icon: <FilePdfOutlined aria-hidden="true" />,
                 },
               ]}
             />
@@ -632,11 +831,32 @@ export const BoardViewerPage: React.FC = () => {
                     />
                   </Space>
                 )}
+
+                {/* Optional Schematic PDF Picker when multiple PDF documents exist in the release */}
+                {viewType === 'schematic' && effectivePdfItems.length > 1 && (
+                  <Space size={tokens.spacing.xs} align="center">
+                    <Typography.Text type="secondary">
+                      {t('pdf.selectSchematic')}:
+                    </Typography.Text>
+                    <Select
+                      value={activePdfItem?.fileName}
+                      style={{ minWidth: 220 }}
+                      options={effectivePdfItems.map((item) => ({
+                        label: item.title || item.fileName,
+                        value: item.fileName,
+                      }))}
+                      onChange={(val) => setSelectedPdfFileName(val)}
+                    />
+                  </Space>
+                )}
               </Space>
             )}
 
-            {/* External Upload Status Badges and 3D Selector */}
-            {sourceMode === 'upload' && (localGerberFiles.length > 0 || local3DFiles.length > 0) && (
+            {/* External Upload Status Badges and 3D / Schematic Selector */}
+            {sourceMode === 'upload' &&
+              (localGerberFiles.length > 0 ||
+                local3DFiles.length > 0 ||
+                localPdfFiles.length > 0) && (
               <Space size={tokens.spacing.xs} align="center" wrap>
                 {localArchiveName && <Tag bordered>{localArchiveName}</Tag>}
                 {localGerberFiles.length > 0 && (
@@ -647,6 +867,11 @@ export const BoardViewerPage: React.FC = () => {
                 {local3DFiles.length > 0 && (
                   <span className="revlog-count-pill">
                     {t('boardViewer.loaded3dCount', { count: local3DFiles.length })}
+                  </span>
+                )}
+                {localPdfFiles.length > 0 && (
+                  <span className="revlog-count-pill">
+                    {localPdfFiles.length} PDF
                   </span>
                 )}
                 {localPnpRows.length > 0 && (
@@ -676,6 +901,23 @@ export const BoardViewerPage: React.FC = () => {
                     />
                   </Space>
                 )}
+
+                {viewType === 'schematic' && localPdfFiles.length > 1 && (
+                  <Space size={tokens.spacing.xs} align="center" style={{ marginLeft: tokens.spacing.xs }}>
+                    <Typography.Text type="secondary">
+                      {t('pdf.selectSchematic')}:
+                    </Typography.Text>
+                    <Select
+                      value={activeLocalPdf?.name}
+                      style={{ minWidth: 180 }}
+                      options={localPdfFiles.map((f) => ({
+                        label: f.name,
+                        value: f.name,
+                      }))}
+                      onChange={(val) => setSelectedPdfFileName(val)}
+                    />
+                  </Space>
+                )}
               </Space>
             )}
           </Space>
@@ -699,7 +941,10 @@ export const BoardViewerPage: React.FC = () => {
               </Button>
             )}
 
-            {sourceMode === 'upload' && (localGerberFiles.length > 0 || local3DFiles.length > 0) && (
+            {sourceMode === 'upload' &&
+              (localGerberFiles.length > 0 ||
+                local3DFiles.length > 0 ||
+                localPdfFiles.length > 0) && (
               <Space size="small" align="center">
                 {/* Optional Supplementary 3D model upload */}
                 <input
@@ -715,6 +960,22 @@ export const BoardViewerPage: React.FC = () => {
                   onClick={() => extra3DInputRef.current?.click()}
                 >
                   {t('boardViewer.upload3dPrompt')}
+                </Button>
+
+                {/* Optional Supplementary Schematic PDF upload */}
+                <input
+                  ref={extraPdfInputRef}
+                  type="file"
+                  accept=".pdf"
+                  style={{ display: 'none' }}
+                  onChange={(e) => void handleAddExtraPdfFile(e)}
+                />
+                <Button
+                  size="small"
+                  icon={<FilePdfOutlined aria-hidden="true" />}
+                  onClick={() => extraPdfInputRef.current?.click()}
+                >
+                  {t('pdf.uploadPdfPrompt')}
                 </Button>
 
                 {/* Optional Supplementary PnP / BOM upload buttons */}
@@ -764,7 +1025,9 @@ export const BoardViewerPage: React.FC = () => {
 
       {/* Main Body: Mode-dependent */}
       {sourceMode === 'upload' ? (
-        localGerberFiles.length === 0 && local3DFiles.length === 0 ? (
+        localGerberFiles.length === 0 &&
+        local3DFiles.length === 0 &&
+        localPdfFiles.length === 0 ? (
           <Card style={{ padding: tokens.spacing.xl, textAlign: 'center' }}>
             {isProcessingUpload ? (
               <div style={{ padding: tokens.spacing.xxl }}>
@@ -776,7 +1039,7 @@ export const BoardViewerPage: React.FC = () => {
             ) : (
               <Upload.Dragger
                 multiple
-                accept=".zip,.gtl,.gbl,.gto,.gbo,.gts,.gbs,.gm1,.gm2,.gko,.edge,.drl,.xln,.exc,.nc,.drd,.gbr,.ger,.csv,.pos,.txt,.glb,.gltf,.stl"
+                accept=".zip,.gtl,.gbl,.gto,.gbo,.gts,.gbs,.gm1,.gm2,.gko,.edge,.drl,.xln,.exc,.nc,.drd,.gbr,.ger,.csv,.pos,.txt,.glb,.gltf,.stl,.pdf"
                 showUploadList={false}
                 beforeUpload={(_file, fileList) => {
                   void handleProcessUploadedFiles(fileList as File[]);
@@ -796,6 +1059,31 @@ export const BoardViewerPage: React.FC = () => {
               </Upload.Dragger>
             )}
           </Card>
+        ) : viewType === 'schematic' ? (
+          !activeLocalPdf ? (
+            <Card style={{ textAlign: 'center', padding: tokens.spacing.xl }}>
+              <Empty description={t('pdf.noSchematicInUpload')}>
+                <Button
+                  type="primary"
+                  icon={<FilePdfOutlined aria-hidden="true" />}
+                  onClick={() => extraPdfInputRef.current?.click()}
+                >
+                  {t('pdf.uploadPdfPrompt')}
+                </Button>
+              </Empty>
+            </Card>
+          ) : (
+            <Card styles={{ body: { padding: 0 } }}>
+              <PdfViewer
+                key={activeLocalPdf.name}
+                blobUrl={activeLocalPdf.blobUrl}
+                fileName={activeLocalPdf.name}
+                title={activeLocalPdf.name}
+                height={720}
+                downloadFileName={activeLocalPdf.name}
+              />
+            </Card>
+          )
         ) : viewType === '2d' ? (
           localGerberFiles.length === 0 ? (
             <Card style={{ textAlign: 'center', padding: tokens.spacing.xl }}>
@@ -876,6 +1164,35 @@ export const BoardViewerPage: React.FC = () => {
             )}
           </Empty>
         </Card>
+      ) : viewType === 'schematic' ? (
+        !activePdfItem ? (
+          <Card style={{ textAlign: 'center', padding: tokens.spacing.xl }}>
+            <Empty description={t('pdf.noSchematicInRelease')}>
+              <Space size="small">
+                <Button
+                  type="primary"
+                  icon={<UploadOutlined aria-hidden="true" />}
+                  onClick={() => {
+                    setSourceMode('upload');
+                    setViewType('schematic');
+                  }}
+                >
+                  {t('boardViewer.sourceUploadExternal')}
+                </Button>
+                <Button onClick={() => setViewType('2d')}>
+                  {t('viewer3d.view2d')}
+                </Button>
+              </Space>
+            </Empty>
+          </Card>
+        ) : (
+          <ReleasePdfView
+            key={`${selectedRelease?.id ?? 'preview'}-${activePdfItem.fileName}`}
+            storagePath={activePdfItem.storagePath}
+            fileName={activePdfItem.fileName}
+            title={activePdfItem.title}
+          />
+        )
       ) : viewType === '2d' ? (
         effectiveGerberItems.length === 0 ? (
           <Card style={{ textAlign: 'center', padding: tokens.spacing.xl }}>

@@ -840,5 +840,30 @@
     "loadError": "Failed to load 3D model",
     "viewIn3D": "View in 3D",
     "emptyHint": "Upload a 3D model file (.glb, .stl) to view the board or enclosure in 3D."
+  },
+  "pdf": {
+    "title": "Document Preview",
+    "documentPreview": "PDF Preview",
+    "schematicBadge": "Schematic",
+    "viewPdf": "Preview PDF",
+    "viewSchematic": "Preview Schematic",
+    "zoomIn": "Zoom in",
+    "zoomOut": "Zoom out",
+    "resetZoom": "Reset zoom",
+    "rotateCw": "Rotate 90 degrees",
+    "resetOrientation": "Reset rotation",
+    "openNewTab": "Open in new tab",
+    "newTab": "New tab",
+    "downloadError": "Failed to download document from storage.",
+    "noFileSpecified": "No file specified for preview.",
+    "loadingDocument": "Loading document...",
+    "noDocumentLoaded": "No document loaded.",
+    "fallbackNotice": "Your browser does not display inline PDF previews.",
+    "openInNewTab": "Open PDF in new tab",
+    "schematicTab": "Schematic",
+    "noSchematicInRelease": "No PDF or schematic documents found for this release.",
+    "noSchematicInUpload": "No PDF or schematic documents found in the uploaded files.",
+    "uploadPdfPrompt": "Add Schematic / PDF",
+    "selectSchematic": "Schematic document"
   }
 }

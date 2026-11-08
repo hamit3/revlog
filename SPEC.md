@@ -75,7 +75,7 @@ The MVP (auth, projects, categories, items, release wizard, release history, rel
   - GLB and STL first, using three.js.
   - STEP support only after a separate evaluation of WebAssembly options and bundle size; record the decision in `DECISIONS.md`.
 
-- [ ] 10. **PDF and schematic preview**
+- [x] 10. **PDF and schematic preview**
   - Inline PDF preview for file items, without downloading.
 
 ---

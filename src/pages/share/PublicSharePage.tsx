@@ -19,14 +19,17 @@ import {
   CopyOutlined,
   DownloadOutlined,
   FileOutlined,
+  FilePdfOutlined,
   HddOutlined,
   LinkOutlined,
   SafetyCertificateOutlined,
 } from '@ant-design/icons';
 import { tokens } from '../../theme/tokens';
 import { StatusBadge } from '../../components/StatusBadge';
+import { PdfViewerModal } from '../../components/pdf/PdfViewerModal';
 import { formatDateTime, formatFileSize } from '../../lib/format';
 import { computeShareTokenHash } from '../../lib/shareToken';
+import { isPdfFileName, isSchematicFileName } from '../../lib/pdf';
 import {
   buildReleasePackageManifest,
   buildReleasePackageZip,
@@ -70,6 +73,12 @@ export const PublicSharePage: React.FC = () => {
   const [packagingStatus, setPackagingStatus] = useState<string | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [daysRemaining, setDaysRemaining] = useState<number | null>(null);
+  const [isPdfModalOpen, setIsPdfModalOpen] = useState<boolean>(false);
+  const [selectedPdfTarget, setSelectedPdfTarget] = useState<{
+    title?: string;
+    fileName?: string | null;
+    storagePath?: string | null;
+  } | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -374,18 +383,43 @@ export const PublicSharePage: React.FC = () => {
     {
       title: t('releases.columns.action'),
       key: 'action',
-      width: 130,
+      width: 170,
       align: 'right',
       render: (_val: unknown, record: PublicSharedReleaseItem) =>
         record.kind === 'file' ? (
-          <Button
-            size="small"
-            icon={<DownloadOutlined aria-hidden="true" />}
-            loading={downloadingId === record.id}
-            onClick={() => void handleDownloadFile(record)}
-          >
-            {t('common.download')}
-          </Button>
+          <div className="revlog-inline-row" style={{ justifyContent: 'flex-end', gap: 4 }}>
+            {isPdfFileName(record.file_name) && (
+              <Tooltip
+                title={
+                  isSchematicFileName(record.file_name)
+                    ? t('pdf.viewSchematic')
+                    : t('pdf.viewPdf')
+                }
+              >
+                <Button
+                  size="small"
+                  icon={<FilePdfOutlined aria-hidden="true" />}
+                  aria-label={`${t('pdf.viewPdf')}: ${record.title || record.file_name || ''}`}
+                  onClick={() => {
+                    setSelectedPdfTarget({
+                      title: record.title || record.file_name || undefined,
+                      fileName: record.file_name,
+                      storagePath: record.storage_path,
+                    });
+                    setIsPdfModalOpen(true);
+                  }}
+                />
+              </Tooltip>
+            )}
+            <Button
+              size="small"
+              icon={<DownloadOutlined aria-hidden="true" />}
+              loading={downloadingId === record.id}
+              onClick={() => void handleDownloadFile(record)}
+            >
+              {t('common.download')}
+            </Button>
+          </div>
         ) : (
           <Button
             size="small"
@@ -594,6 +628,19 @@ export const PublicSharePage: React.FC = () => {
           </div>
         </Card>
       </main>
+
+      {selectedPdfTarget && (
+        <PdfViewerModal
+          open={isPdfModalOpen}
+          title={selectedPdfTarget.title}
+          fileName={selectedPdfTarget.fileName}
+          storagePath={selectedPdfTarget.storagePath}
+          onClose={() => {
+            setIsPdfModalOpen(false);
+            setSelectedPdfTarget(null);
+          }}
+        />
+      )}
     </div>
   );
 };

@@ -45,8 +45,9 @@ import { downloadProjectFileBytes, downloadProjectFileText } from '../../lib/sto
 import { sanitizeSvg } from '../../lib/svgSanitizer';
 import { supabaseClient } from '../../providers/supabaseClient';
 import type { ParsedBomRow, ParsedPnpRow } from '../../types/database';
+import { Pcb3DViewer } from '../three/Pcb3DViewer';
 
-export type GerberViewMode = 'top' | 'bottom' | 'layers';
+export type GerberViewMode = 'top' | 'bottom' | 'layers' | '3d';
 
 export interface GerberViewerModalProps {
   open?: boolean;
@@ -60,6 +61,7 @@ export interface GerberViewerModalProps {
   releaseId?: string;
   bomRows?: ParsedBomRow[];
   pnpRows?: ParsedPnpRow[];
+  initialViewMode?: GerberViewMode;
   onClose?: () => void;
 }
 
@@ -75,6 +77,7 @@ export const GerberViewerModal: React.FC<GerberViewerModalProps> = ({
   releaseId,
   bomRows: propBomRows,
   pnpRows: propPnpRows,
+  initialViewMode,
   onClose,
 }) => {
   const t = useTranslate();
@@ -84,7 +87,10 @@ export const GerberViewerModal: React.FC<GerberViewerModalProps> = ({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [parsedData, setParsedData] = useState<GerberParsedResult | null>(null);
   const [layers, setLayers] = useState<GerberLayer[]>([]);
-  const [viewMode, setViewMode] = useState<GerberViewMode>('top');
+  const [viewModeOverride, setViewModeOverride] = useState<GerberViewMode | null>(null);
+  const [internalDefaultMode, setInternalDefaultMode] = useState<GerberViewMode>('top');
+  const viewMode = viewModeOverride ?? initialViewMode ?? internalDefaultMode;
+  const setViewMode = (mode: GerberViewMode) => setViewModeOverride(mode);
 
   // Pan & Zoom state
   const [zoom, setZoom] = useState<number>(1);
@@ -234,11 +240,11 @@ export const GerberViewerModal: React.FC<GerberViewerModalProps> = ({
 
         // Pick suitable default view mode
         if (parseResult.topBoardSvg) {
-          setViewMode('top');
+          setInternalDefaultMode('top');
         } else if (parseResult.bottomBoardSvg) {
-          setViewMode('bottom');
+          setInternalDefaultMode('bottom');
         } else {
-          setViewMode('layers');
+          setInternalDefaultMode('layers');
         }
       } catch (err) {
         if (!active) {
@@ -618,6 +624,11 @@ export const GerberViewerModal: React.FC<GerberViewerModalProps> = ({
                       disabled: !parsedData.bottomBoardSvg,
                     },
                     { value: 'layers', label: t('gerber.viewLayers') },
+                    {
+                      value: '3d',
+                      label: t('viewer3d.pcbBoard3d'),
+                      disabled: !parsedData.topBoardSvg && !parsedData.bottomBoardSvg,
+                    },
                   ]}
                 />
               </div>
@@ -702,11 +713,24 @@ export const GerberViewerModal: React.FC<GerberViewerModalProps> = ({
               position: 'relative',
             }}
           >
-            {/* Viewport Canvas */}
-            <div
-              tabIndex={0}
-              role="region"
-              aria-label={t('gerber.viewerTitle')}
+            {/* Viewport Canvas or 3D PCB View */}
+            {viewMode === '3d' ? (
+              <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+                <Pcb3DViewer
+                  topSvg={parsedData.topBoardSvg}
+                  bottomSvg={parsedData.bottomBoardSvg}
+                  viewBox={parsedData.viewBox}
+                  pnpComponents={allMatchedComponents}
+                  selectedDesignator={selectedDesignator}
+                  onSelectComponent={(comp) => setSelectedDesignator(comp?.designator ?? null)}
+                  height={580}
+                />
+              </div>
+            ) : (
+              <div
+                tabIndex={0}
+                role="region"
+                aria-label={t('gerber.viewerTitle')}
               onMouseDown={handleMouseDown}
               onMouseMove={handleMouseMove}
               onMouseUp={handleMouseUp}
@@ -839,6 +863,7 @@ export const GerberViewerModal: React.FC<GerberViewerModalProps> = ({
                 )}
               </div>
             </div>
+            )}
 
             {/* Inspector Sidebar Panel: Layers, Components, BOM */}
             <div

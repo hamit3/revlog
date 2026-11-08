@@ -810,6 +810,7 @@ export const BoardViewerPage: React.FC = () => {
               <GerberViewerModal
                 key={localArchiveName || 'uploaded-files'}
                 inline
+                initialViewMode="top"
                 files={localGerberFiles}
                 bomRows={localBomRows.length > 0 ? localBomRows : undefined}
                 pnpRows={localPnpRows.length > 0 ? localPnpRows : undefined}
@@ -818,6 +819,19 @@ export const BoardViewerPage: React.FC = () => {
               />
             </Card>
           )
+        ) : localGerberFiles.length > 0 ? (
+          <Card styles={{ body: { padding: 0 } }}>
+            <GerberViewerModal
+              key={`${localArchiveName || 'uploaded-files'}-3d`}
+              inline
+              initialViewMode="3d"
+              files={localGerberFiles}
+              bomRows={localBomRows.length > 0 ? localBomRows : undefined}
+              pnpRows={localPnpRows.length > 0 ? localPnpRows : undefined}
+              title={localArchiveName || t('boardViewer.externalFilesTitle')}
+              height={720}
+            />
+          </Card>
         ) : !activeLocal3D ? (
           <Card style={{ textAlign: 'center', padding: tokens.spacing.xl }}>
             <Empty description={t('viewer3d.noModelsInUpload')}>
@@ -891,6 +905,7 @@ export const BoardViewerPage: React.FC = () => {
             <GerberViewerModal
               key={selectedRelease?.id ?? 'preview'}
               inline
+              initialViewMode="top"
               multipleItems={effectiveGerberItems}
               releaseId={selectedRelease?.id}
               title={
@@ -902,6 +917,22 @@ export const BoardViewerPage: React.FC = () => {
             />
           </Card>
         )
+      ) : effectiveGerberItems.length > 0 ? (
+        <Card styles={{ body: { padding: 0 } }}>
+          <GerberViewerModal
+            key={`${selectedRelease?.id ?? 'preview'}-3d`}
+            inline
+            initialViewMode="3d"
+            multipleItems={effectiveGerberItems}
+            releaseId={selectedRelease?.id}
+            title={
+              selectedRelease
+                ? `${selectedRelease.version_label} · ${t('gerber.viewerTitle')}`
+                : t('gerber.viewerTitle')
+            }
+            height={720}
+          />
+        </Card>
       ) : !active3DItem ? (
         <Card style={{ textAlign: 'center', padding: tokens.spacing.xl }}>
           <Empty description={t('viewer3d.noModelsInRelease')}>

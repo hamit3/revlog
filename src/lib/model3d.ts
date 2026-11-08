@@ -44,3 +44,4 @@ export interface Model3DMeta {
     depth: number;
   };
 }
+

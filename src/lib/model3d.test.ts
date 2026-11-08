@@ -25,3 +25,4 @@ describe('model3d utils', () => {
     expect(getModel3DFormat('other.pdf')).toBe(null);
   });
 });
+

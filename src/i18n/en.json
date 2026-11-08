@@ -47,6 +47,7 @@
     "productSettings": "Product settings",
     "compare": "Compare",
     "bomPnp": "BOM & PnP",
+    "boardViewer": "Board Viewer",
     "backToProject": "Back to project",
     "signOut": "Sign out",
     "collapseSidebar": "Collapse sidebar",
@@ -789,5 +790,15 @@
       "drawing": "Drawing",
       "other": "Other"
     }
+  },
+  "boardViewer": {
+    "pageTitle": "Board Viewer",
+    "pageSubtitle": "Interactive PCB Gerber layer rendering and Pick-and-Place component overlay.",
+    "selectRelease": "Release",
+    "chooseReleasePlaceholder": "Select a release to inspect",
+    "viewReleaseDetails": "Release details",
+    "noReleases": "No releases found for this product.",
+    "noGerberForRelease": "No Gerber files found for this release. Upload Gerber or drill files (.zip, .gbr, .gtl) in release items to inspect the board.",
+    "goToReleaseItems": "Go to release files"
   }
 }

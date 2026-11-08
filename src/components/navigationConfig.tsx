@@ -1,5 +1,6 @@
 import React from 'react';
 import {
+  AimOutlined,
   AppstoreOutlined,
   BlockOutlined,
   CodeOutlined,
@@ -75,6 +76,9 @@ export function resolveSwitchedProjectPath(
   if (pathname === `${currentBase}/bom-pnp` || pathname.startsWith(`${currentBase}/bom-pnp`)) {
     return `${nextBase}/bom-pnp`;
   }
+  if (pathname === `${currentBase}/board` || pathname.startsWith(`${currentBase}/board`)) {
+    return `${nextBase}/board`;
+  }
   return nextBase;
 }
 
@@ -104,6 +108,9 @@ export function resolveSwitchedProductPath(
     if (pathname === `${projectBase}/bom-pnp` || pathname.startsWith(`${projectBase}/bom-pnp`)) {
       return `${nextBase}/bom-pnp`;
     }
+    if (pathname === `${projectBase}/board` || pathname.startsWith(`${projectBase}/board`)) {
+      return `${nextBase}/board`;
+    }
     return nextBase;
   }
   const currentBase = `/projects/${projectId}/products/${currentProductId}`;
@@ -118,6 +125,9 @@ export function resolveSwitchedProductPath(
   }
   if (pathname === `${currentBase}/bom-pnp` || pathname.startsWith(`${currentBase}/bom-pnp`)) {
     return `${nextBase}/bom-pnp`;
+  }
+  if (pathname === `${currentBase}/board` || pathname.startsWith(`${currentBase}/board`)) {
+    return `${nextBase}/board`;
   }
   return nextBase;
 }
@@ -147,6 +157,9 @@ export function resolveSwitchedToProjectScopePath(
   }
   if (pathname === `${currentBase}/bom-pnp` || pathname.startsWith(`${currentBase}/bom-pnp`)) {
     return `${projectBase}/bom-pnp`;
+  }
+  if (pathname === `${currentBase}/board` || pathname.startsWith(`${currentBase}/board`)) {
+    return `${projectBase}/board`;
   }
   return projectBase;
 }
@@ -218,6 +231,9 @@ export function resolveHeaderTrailingSection(
     if (pathname.startsWith(`${productBase}/bom-pnp`)) {
       return { label: t('nav.bomPnp') };
     }
+    if (pathname.startsWith(`${productBase}/board`)) {
+      return { label: t('nav.boardViewer') };
+    }
     if (pathname.startsWith(`${productBase}/settings`)) {
       return { label: t('nav.productSettings') };
     }
@@ -256,6 +272,9 @@ export function resolveHeaderTrailingSection(
   }
   if (pathname.startsWith(`${projectBase}/bom-pnp`)) {
     return { label: t('nav.bomPnp') };
+  }
+  if (pathname.startsWith(`${projectBase}/board`)) {
+    return { label: t('nav.boardViewer') };
   }
   if (pathname.startsWith(`${projectBase}/settings`)) {
     return { label: t('nav.settings') };
@@ -334,6 +353,14 @@ export function buildProjectNavSections(
           disabled: !projectId,
           icon: <FileSearchOutlined aria-hidden="true" />,
           matches: (pathname) => Boolean(projectId) && pathname.startsWith(`${targetBase}/bom-pnp`),
+        },
+        {
+          key: 'nav-board-viewer',
+          label: t('nav.boardViewer'),
+          to: projectId ? `${targetBase}/board` : undefined,
+          disabled: !projectId,
+          icon: <AimOutlined aria-hidden="true" />,
+          matches: (pathname) => Boolean(projectId) && pathname.startsWith(`${targetBase}/board`),
         },
         {
           key: 'nav-settings',

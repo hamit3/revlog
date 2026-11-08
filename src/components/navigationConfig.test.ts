@@ -35,6 +35,7 @@ describe('Flat Project Menu + In-Page Tabs navigationConfig and switcher helpers
       'nav-releases',
       'nav-compare',
       'nav-bom-pnp',
+      'nav-board-viewer',
       'nav-settings',
     ]);
 
@@ -78,6 +79,10 @@ describe('Flat Project Menu + In-Page Tabs navigationConfig and switcher helpers
       selectedKeys: ['nav-bom-pnp'],
       openKeys: [],
     });
+    expect(resolveActiveNavKeys(projectSections, '/projects/proj-1/board')).toEqual({
+      selectedKeys: ['nav-board-viewer'],
+      openKeys: [],
+    });
     expect(resolveActiveNavKeys(projectSections, '/projects/proj-1/settings')).toEqual({
       selectedKeys: ['nav-settings'],
       openKeys: [],
@@ -97,6 +102,7 @@ describe('Flat Project Menu + In-Page Tabs navigationConfig and switcher helpers
       'nav-releases',
       'nav-compare',
       'nav-bom-pnp',
+      'nav-board-viewer',
       'nav-settings',
     ]);
 
@@ -135,6 +141,12 @@ describe('Flat Project Menu + In-Page Tabs navigationConfig and switcher helpers
       openKeys: [],
     });
     expect(
+      resolveActiveNavKeys(productSections, '/projects/proj-1/products/prod-a/board'),
+    ).toEqual({
+      selectedKeys: ['nav-board-viewer'],
+      openKeys: [],
+    });
+    expect(
       resolveActiveNavKeys(productSections, '/projects/proj-1/products/prod-a/settings'),
     ).toEqual({
       selectedKeys: ['nav-settings'],
@@ -166,6 +178,9 @@ describe('Flat Project Menu + In-Page Tabs navigationConfig and switcher helpers
     expect(resolveSwitchedProjectPath('/projects/p1/bom-pnp', 'p1', 'p2')).toBe(
       '/projects/p2/bom-pnp',
     );
+    expect(resolveSwitchedProjectPath('/projects/p1/board', 'p1', 'p2')).toBe(
+      '/projects/p2/board',
+    );
     expect(resolveSwitchedProjectPath('/projects/p1/products/a1', 'p1', 'p2')).toBe('/projects/p2');
 
     // In-page product tabs switching (from project scope to product scope)
@@ -174,6 +189,9 @@ describe('Flat Project Menu + In-Page Tabs navigationConfig and switcher helpers
     );
     expect(resolveSwitchedProductPath('/projects/p1/bom-pnp', 'p1', undefined, 'b2')).toBe(
       '/projects/p1/products/b2/bom-pnp',
+    );
+    expect(resolveSwitchedProductPath('/projects/p1/board', 'p1', undefined, 'b2')).toBe(
+      '/projects/p1/products/b2/board',
     );
     expect(resolveSwitchedProductPath('/projects/p1/settings', 'p1', undefined, 'b2')).toBe(
       '/projects/p1/products/b2/settings',
@@ -189,6 +207,9 @@ describe('Flat Project Menu + In-Page Tabs navigationConfig and switcher helpers
     expect(resolveSwitchedProductPath('/projects/p1/products/a1/bom-pnp', 'p1', 'a1', 'b2')).toBe(
       '/projects/p1/products/b2/bom-pnp',
     );
+    expect(resolveSwitchedProductPath('/projects/p1/products/a1/board', 'p1', 'a1', 'b2')).toBe(
+      '/projects/p1/products/b2/board',
+    );
     expect(resolveSwitchedProductPath('/projects/p1/products/a1/settings', 'p1', 'a1', 'b2')).toBe(
       '/projects/p1/products/b2/settings',
     );
@@ -202,6 +223,9 @@ describe('Flat Project Menu + In-Page Tabs navigationConfig and switcher helpers
     );
     expect(resolveSwitchedToProjectScopePath('/projects/p1/products/a1/bom-pnp', 'p1', 'a1')).toBe(
       '/projects/p1/bom-pnp',
+    );
+    expect(resolveSwitchedToProjectScopePath('/projects/p1/products/a1/board', 'p1', 'a1')).toBe(
+      '/projects/p1/board',
     );
     expect(resolveSwitchedToProjectScopePath('/projects/p1/products/a1/settings', 'p1', 'a1')).toBe(
       '/projects/p1/settings',

@@ -49,7 +49,9 @@ import type { ParsedBomRow, ParsedPnpRow } from '../../types/database';
 export type GerberViewMode = 'top' | 'bottom' | 'layers';
 
 export interface GerberViewerModalProps {
-  open: boolean;
+  open?: boolean;
+  inline?: boolean;
+  height?: number | string;
   title?: string;
   files?: { name: string; content: string }[];
   storagePath?: string | null;
@@ -58,11 +60,13 @@ export interface GerberViewerModalProps {
   releaseId?: string;
   bomRows?: ParsedBomRow[];
   pnpRows?: ParsedPnpRow[];
-  onClose: () => void;
+  onClose?: () => void;
 }
 
 export const GerberViewerModal: React.FC<GerberViewerModalProps> = ({
-  open,
+  open = false,
+  inline = false,
+  height = 720,
   title,
   files: initialFiles,
   storagePath,
@@ -74,6 +78,7 @@ export const GerberViewerModal: React.FC<GerberViewerModalProps> = ({
   onClose,
 }) => {
   const t = useTranslate();
+  const isOpen = inline || open;
 
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -105,7 +110,7 @@ export const GerberViewerModal: React.FC<GerberViewerModalProps> = ({
 
   // Fetch BOM & PnP check run if releaseId is provided without direct rows
   useEffect(() => {
-    if (!open) {
+    if (!isOpen) {
       return;
     }
     if (propBomRows && propPnpRows) {
@@ -144,7 +149,7 @@ export const GerberViewerModal: React.FC<GerberViewerModalProps> = ({
     return () => {
       active = false;
     };
-  }, [open, releaseId, propBomRows, propPnpRows]);
+  }, [isOpen, releaseId, propBomRows, propPnpRows]);
 
   const effectiveBomRows = useMemo(() => {
     return propBomRows ?? fetchedBomRows;
@@ -164,7 +169,7 @@ export const GerberViewerModal: React.FC<GerberViewerModalProps> = ({
 
   // Load Gerber files
   useEffect(() => {
-    if (!open) {
+    if (!isOpen) {
       return;
     }
 
@@ -251,7 +256,7 @@ export const GerberViewerModal: React.FC<GerberViewerModalProps> = ({
     return () => {
       active = false;
     };
-  }, [open, initialFiles, storagePath, fileName, multipleItems, t]);
+  }, [isOpen, initialFiles, storagePath, fileName, multipleItems, t]);
 
   // ViewBox bounds
   const viewBoxBounds = useMemo<SvgViewBoxBounds | null>(() => {
@@ -550,49 +555,8 @@ export const GerberViewerModal: React.FC<GerberViewerModalProps> = ({
     );
   }, [allMatchedComponents, selectedDesignator]);
 
-  return (
-    <Modal
-      open={open}
-      title={
-        <div className="revlog-inline-row" style={{ gap: tokens.spacing.sm }}>
-          <FileSearchOutlined aria-hidden="true" />
-          <Typography.Text strong>{title || t('gerber.viewerTitle')}</Typography.Text>
-          {fileName && <Tag bordered>{fileName}</Tag>}
-          {layers.length > 0 && (
-            <span className="revlog-count-pill">
-              {t('gerber.layerCount', { count: layers.length })}
-            </span>
-          )}
-          {allMatchedComponents.length > 0 && (
-            <span className="revlog-count-pill">
-              {t('gerber.pnpComponentsCount', { count: allMatchedComponents.length })}
-            </span>
-          )}
-        </div>
-      }
-      width={1120}
-      footer={null}
-      destroyOnHidden
-      onCancel={onClose}
-      afterClose={() => {
-        setParsedData(null);
-        setLayers([]);
-        setErrorMessage(null);
-        setZoom(1);
-        setPan({ x: 0, y: 0 });
-        setFetchedBomRows([]);
-        setFetchedPnpRows([]);
-        setSelectedDesignator(null);
-        setSelectedDesignators(new Set());
-        setSelectedBomRow(null);
-        setPnpSearchQuery('');
-        setBomSearchQuery('');
-        setInspectorTab('layers');
-      }}
-      styles={{
-        body: { padding: 0 },
-      }}
-    >
+  const renderViewerBody = () => (
+    <>
       {isLoading ? (
         <div style={{ padding: tokens.spacing.xxl, textAlign: 'center' }}>
           <Spin />
@@ -609,9 +573,11 @@ export const GerberViewerModal: React.FC<GerberViewerModalProps> = ({
             description={errorMessage}
             style={{ marginBottom: tokens.spacing.md }}
           />
-          <div style={{ textAlign: 'right' }}>
-            <Button onClick={onClose}>{t('common.close')}</Button>
-          </div>
+          {onClose && (
+            <div style={{ textAlign: 'right' }}>
+              <Button onClick={onClose}>{t('common.close')}</Button>
+            </div>
+          )}
         </div>
       ) : !parsedData ? (
         <div style={{ padding: tokens.spacing.xl, textAlign: 'center' }}>
@@ -1343,6 +1309,61 @@ export const GerberViewerModal: React.FC<GerberViewerModalProps> = ({
           </div>
         </div>
       )}
+    </>
+  );
+
+  if (inline) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height }}>
+        {renderViewerBody()}
+      </div>
+    );
+  }
+
+  return (
+    <Modal
+      open={open}
+      title={
+        <div className="revlog-inline-row" style={{ gap: tokens.spacing.sm }}>
+          <FileSearchOutlined aria-hidden="true" />
+          <Typography.Text strong>{title || t('gerber.viewerTitle')}</Typography.Text>
+          {fileName && <Tag bordered>{fileName}</Tag>}
+          {layers.length > 0 && (
+            <span className="revlog-count-pill">
+              {t('gerber.layerCount', { count: layers.length })}
+            </span>
+          )}
+          {allMatchedComponents.length > 0 && (
+            <span className="revlog-count-pill">
+              {t('gerber.pnpComponentsCount', { count: allMatchedComponents.length })}
+            </span>
+          )}
+        </div>
+      }
+      width={1120}
+      footer={null}
+      destroyOnHidden
+      onCancel={onClose}
+      afterClose={() => {
+        setParsedData(null);
+        setLayers([]);
+        setErrorMessage(null);
+        setZoom(1);
+        setPan({ x: 0, y: 0 });
+        setFetchedBomRows([]);
+        setFetchedPnpRows([]);
+        setSelectedDesignator(null);
+        setSelectedDesignators(new Set());
+        setSelectedBomRow(null);
+        setPnpSearchQuery('');
+        setBomSearchQuery('');
+        setInspectorTab('layers');
+      }}
+      styles={{
+        body: { padding: 0 },
+      }}
+    >
+      {renderViewerBody()}
     </Modal>
   );
 };

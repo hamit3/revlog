@@ -33,6 +33,7 @@ import { ReleaseWizardPage } from './pages/releases/wizard';
 import { ReleaseListPage } from './pages/releases/list';
 import { ReleaseShowPage } from './pages/releases/show';
 import { BomPnpPage } from './pages/bom-pnp/BomPnpPage';
+import { BoardViewerPage } from './pages/board/BoardViewerPage';
 import { ComparePage } from './pages/compare/ComparePage';
 import { PublicSharePage } from './pages/share/PublicSharePage';
 
@@ -155,6 +156,7 @@ export const App: React.FC = () => {
                 <Route path="/projects/:projectId/settings" element={<ProjectSettingsPage />} />
                 <Route path="/projects/:projectId/compare" element={<ComparePage />} />
                 <Route path="/projects/:projectId/bom-pnp" element={<BomPnpPage />} />
+                <Route path="/projects/:projectId/board" element={<BoardViewerPage />} />
 
                 {/* Project-level (system) releases */}
                 <Route path="/projects/:projectId/releases" element={<ProjectReleaseListPage />} />
@@ -188,6 +190,10 @@ export const App: React.FC = () => {
                 <Route
                   path="/projects/:projectId/products/:productId/bom-pnp"
                   element={<BomPnpPage />}
+                />
+                <Route
+                  path="/projects/:projectId/products/:productId/board"
+                  element={<BoardViewerPage />}
                 />
                 <Route
                   path="/projects/:projectId/products/:productId/releases"

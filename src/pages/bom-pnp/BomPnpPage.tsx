@@ -20,6 +20,7 @@ import {
 import type { ColumnsType } from 'antd/es/table';
 import {
   ExclamationCircleOutlined,
+  EyeOutlined,
   InfoCircleOutlined,
   LockOutlined,
   PlusOutlined,
@@ -29,11 +30,13 @@ import {
 } from '@ant-design/icons';
 import { tokens } from '../../theme/tokens';
 import { PageHeaderTitle } from '../../components/PageHeaderTitle';
+import { GerberViewerModal } from '../../components/gerber/GerberViewerModal';
 import { useProductAccess, useProjectAccess } from '../../lib/useProjectAccess';
 import { supabaseClient } from '../../providers/supabaseClient';
 import { downloadProjectFileText, validateUploadFileSize } from '../../lib/storage';
 import { sha256HexFromFile, sha256HexFromString } from '../../lib/sha256';
 import { evaluateBomPnpCsvTexts, isLikelyBomName, isLikelyPnpName } from '../../lib/bomPnp';
+import { isAnyGerberItem } from '../../lib/gerber';
 import type {
   BomColumnMapping,
   BomPnpCheckRun,
@@ -117,6 +120,12 @@ export const BomPnpPage: React.FC = () => {
   const [pnpSearch, setPnpSearch] = useState<string>('');
   const [pnpSideFilter, setPnpSideFilter] = useState<'all' | 'top' | 'bottom' | 'unknown'>('all');
   const [pnpIssuesOnly, setPnpIssuesOnly] = useState<boolean>(false);
+
+  // Gerber modal integration for PnP overlay on board
+  const [gerberModalOpen, setGerberModalOpen] = useState<boolean>(false);
+  const [releaseItemsFromDb, setReleaseItemsFromDb] = useState<
+    { fileName: string; storagePath: string }[]
+  >([]);
 
   const bomFileInputRef = useRef<HTMLInputElement | null>(null);
   const pnpFileInputRef = useRef<HTMLInputElement | null>(null);
@@ -233,6 +242,16 @@ export const BomPnpPage: React.FC = () => {
   }, [releases, selectedReleaseId]);
 
   const isPublishedRelease = selectedRelease?.status === 'published';
+
+  const productGerberItems = useMemo(() => {
+    return productItems
+      .filter((itm) => isAnyGerberItem(itm.file_name) && itm.storage_path && itm.file_name)
+      .map((itm) => ({ fileName: itm.file_name!, storagePath: itm.storage_path! }));
+  }, [productItems]);
+
+  const releaseGerberItems = useMemo(() => {
+    return selectedRelease ? releaseItemsFromDb : productGerberItems;
+  }, [selectedRelease, releaseItemsFromDb, productGerberItems]);
 
   // Load latest check run for selected release
   useEffect(() => {
@@ -358,6 +377,38 @@ export const BomPnpPage: React.FC = () => {
       active = false;
     };
   }, [isPublishedRelease, pnpSourceType, selectedPnpItemId, productItems, t]);
+
+  // Load Gerber files available for the active release
+  useEffect(() => {
+    if (!selectedRelease) {
+      return;
+    }
+
+    let active = true;
+    void (async () => {
+      try {
+        const { data, error } = await supabaseClient
+          .from('release_items')
+          .select('file_name, storage_path')
+          .eq('release_id', selectedRelease.id);
+
+        if (!active || error || !data) {
+          return;
+        }
+
+        const items = data
+          .filter((ri) => isAnyGerberItem(ri.file_name) && ri.storage_path && ri.file_name)
+          .map((ri) => ({ fileName: ri.file_name!, storagePath: ri.storage_path! }));
+        setReleaseItemsFromDb(items);
+      } catch {
+        // Silently ignore
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [selectedRelease]);
 
   // Run evaluation whenever texts or mapping overrides change (if not viewing stored published run)
   useEffect(() => {
@@ -843,17 +894,27 @@ export const BomPnpPage: React.FC = () => {
     <PageHeader
       title={<PageHeaderTitle title={t('bomPnp.pageTitle')} subtitle={t('bomPnp.pageSubtitle')} />}
       extra={
-        !isPublishedRelease && canEditContent && selectedRelease ? (
-          <Button
-            type="primary"
-            icon={<SaveOutlined aria-hidden="true" />}
-            loading={isSaving}
-            disabled={!bomText && !pnpText}
-            onClick={() => void handleSaveCheckRun()}
-          >
-            {t('bomPnp.runAndSaveCheck')}
-          </Button>
-        ) : null
+        <Space size="small">
+          {releaseGerberItems.length > 0 && (
+            <Button
+              icon={<EyeOutlined aria-hidden="true" />}
+              onClick={() => setGerberModalOpen(true)}
+            >
+              {t('gerber.viewOnBoard')}
+            </Button>
+          )}
+          {!isPublishedRelease && canEditContent && selectedRelease ? (
+            <Button
+              type="primary"
+              icon={<SaveOutlined aria-hidden="true" />}
+              loading={isSaving}
+              disabled={!bomText && !pnpText}
+              onClick={() => void handleSaveCheckRun()}
+            >
+              {t('bomPnp.runAndSaveCheck')}
+            </Button>
+          ) : null}
+        </Space>
       }
     >
       {errorMessage && (
@@ -1380,6 +1441,14 @@ export const BomPnpPage: React.FC = () => {
                           { label: t('bomPnp.filters.issuesOnly'), value: 'issues' },
                         ]}
                       />
+                      {releaseGerberItems.length > 0 && (
+                        <Button
+                          icon={<EyeOutlined aria-hidden="true" />}
+                          onClick={() => setGerberModalOpen(true)}
+                        >
+                          {t('gerber.viewOnBoard')}
+                        </Button>
+                      )}
                     </div>
 
                     <div className="revlog-table-region" tabIndex={0}>
@@ -1415,6 +1484,21 @@ export const BomPnpPage: React.FC = () => {
           setBomMappingOverride(null);
           setPnpMappingOverride(null);
         }}
+      />
+
+      {/* Gerber & PnP Board Viewer modal */}
+      <GerberViewerModal
+        open={gerberModalOpen}
+        title={
+          selectedRelease
+            ? `${selectedRelease.version_label} · ${t('gerber.viewerTitle')}`
+            : t('gerber.viewerTitle')
+        }
+        multipleItems={releaseGerberItems}
+        releaseId={selectedRelease?.id}
+        bomRows={parsedBom}
+        pnpRows={parsedPnp}
+        onClose={() => setGerberModalOpen(false)}
       />
     </PageHeader>
   );

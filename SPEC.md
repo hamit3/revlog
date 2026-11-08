@@ -66,7 +66,7 @@ The MVP (auth, projects, categories, items, release wizard, release history, rel
   - Use an existing open-source library; do not write a Gerber parser from scratch.
   - Graceful message when a file cannot be parsed.
 
-- [ ] 8. **PnP overlay on the board**
+- [x] 8. **PnP overlay on the board**
   - Draw PnP component positions and rotations over the Gerber view.
   - Click a component to show its BOM row; click a BOM row to highlight the component.
   - Requires items 1 and 7.

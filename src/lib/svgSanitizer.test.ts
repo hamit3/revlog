@@ -11,8 +11,7 @@ describe('svgSanitizer', () => {
   });
 
   it('removes <script> tags from SVG', () => {
-    const maliciousSvg =
-      '<svg><circle cx="10" cy="10" r="5" /><script>alert("xss")</script></svg>';
+    const maliciousSvg = '<svg><circle cx="10" cy="10" r="5" /><script>alert("xss")</script></svg>';
     const sanitized = sanitizeSvg(maliciousSvg);
     expect(sanitized).not.toContain('<script');
     expect(sanitized).not.toContain('alert');

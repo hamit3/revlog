@@ -84,9 +84,7 @@ export function isAnyGerberItem(fileName?: string | null): boolean {
 export function getDefaultLayerColor(type: GerberType, side: GerberSide): string {
   switch (type) {
     case 'copper':
-      return side === 'bottom'
-        ? tokens.colors.gerberCopperBottom
-        : tokens.colors.gerberCopperTop;
+      return side === 'bottom' ? tokens.colors.gerberCopperBottom : tokens.colors.gerberCopperTop;
     case 'silkscreen':
       return tokens.colors.gerberSilkscreen;
     case 'soldermask':
@@ -104,9 +102,7 @@ export function getDefaultLayerColor(type: GerberType, side: GerberSide): string
 
 const MAX_UNCOMPRESSED_FILE_BYTES = 10 * 1024 * 1024; // 10 MB limit per file entry
 
-export function extractFilesFromZip(
-  zipBuffer: Uint8Array,
-): { name: string; content: string }[] {
+export function extractFilesFromZip(zipBuffer: Uint8Array): { name: string; content: string }[] {
   const unzipped = unzipSync(zipBuffer);
   const result: { name: string; content: string }[] = [];
   const textDecoder = new TextDecoder('utf-8', { fatal: false });

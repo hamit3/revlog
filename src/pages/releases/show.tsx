@@ -1360,6 +1360,9 @@ export const ReleaseShowPage: React.FC = () => {
         fileName={selectedGerberTarget?.fileName}
         storagePath={selectedGerberTarget?.storagePath}
         multipleItems={selectedGerberTarget?.multipleItems}
+        releaseId={release.id}
+        bomRows={bomPnpRun?.parsed_bom ?? undefined}
+        pnpRows={bomPnpRun?.parsed_pnp ?? undefined}
         onClose={() => {
           setIsGerberModalOpen(false);
           setSelectedGerberTarget(null);

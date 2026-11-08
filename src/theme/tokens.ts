@@ -37,6 +37,13 @@ export const tokens = {
     gerberOutline: '#F43F5E',
     gerberDrill: '#94A3B8',
     gerberOther: '#64748B',
+    pnpOverlayComponentBg: 'rgba(59, 130, 246, 0.25)',
+    pnpOverlayComponentBorder: '#1F5FBF',
+    pnpOverlayPin1Marker: '#F43F5E',
+    pnpOverlaySelected: 'rgba(229, 142, 38, 0.35)',
+    pnpOverlaySelectedBorder: '#E58E26',
+    pnpOverlayHoverBorder: '#3B82F6',
+    pnpOverlayText: '#F8FAFC',
     maskBg: 'rgba(31, 35, 40, 0.42)',
     subtleShadow: '0 1px 2px rgba(31, 35, 40, 0.05)',
     cardShadow: '0 1px 2px rgba(31, 35, 40, 0.04), 0 1px 3px rgba(31, 35, 40, 0.03)',
@@ -273,6 +280,16 @@ export function applyThemeCssVariables(target?: HTMLElement): void {
   root.style.setProperty('--revlog-warning-bg', tokens.colors.warningBg);
   root.style.setProperty('--revlog-warning-border', tokens.colors.warningBorder);
   root.style.setProperty('--revlog-gerber-canvas-bg', tokens.colors.gerberCanvasBg);
+  root.style.setProperty('--revlog-pnp-overlay-bg', tokens.colors.pnpOverlayComponentBg);
+  root.style.setProperty('--revlog-pnp-overlay-border', tokens.colors.pnpOverlayComponentBorder);
+  root.style.setProperty('--revlog-pnp-overlay-pin1', tokens.colors.pnpOverlayPin1Marker);
+  root.style.setProperty('--revlog-pnp-overlay-selected', tokens.colors.pnpOverlaySelected);
+  root.style.setProperty(
+    '--revlog-pnp-overlay-selected-border',
+    tokens.colors.pnpOverlaySelectedBorder,
+  );
+  root.style.setProperty('--revlog-pnp-overlay-hover-border', tokens.colors.pnpOverlayHoverBorder);
+  root.style.setProperty('--revlog-pnp-overlay-text', tokens.colors.pnpOverlayText);
   root.style.setProperty('--revlog-font-sans', tokens.typography.fontFamilySans);
   root.style.setProperty('--revlog-font-mono', tokens.typography.fontFamilyMono);
   root.style.setProperty('--revlog-radius', `${tokens.radius.md}px`);

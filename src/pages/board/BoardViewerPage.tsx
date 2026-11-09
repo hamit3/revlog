@@ -522,8 +522,12 @@ export const BoardViewerPage: React.FC = () => {
   const [isProcessingUpload, setIsProcessingUpload] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const { project, product } = useProductAccess(projectId, productId);
-  const { project: fallbackProject } = useProjectAccess(projectId);
+  const {
+    project,
+    product,
+    isLoading: isProductAccessLoading,
+  } = useProductAccess(projectId, productId);
+  const { project: fallbackProject, isLoading: isProjectAccessLoading } = useProjectAccess(projectId);
 
   // Set document title
   useEffect(() => {
@@ -760,6 +764,15 @@ export const BoardViewerPage: React.FC = () => {
     }
     return modes;
   }, [localGerberFiles.length, local3DFiles.length, localPdfFiles.length, t]);
+
+  const isAccessLoading = productId ? isProductAccessLoading : isProjectAccessLoading;
+  if (isAccessLoading) {
+    return (
+      <div style={{ padding: tokens.spacing.xxl, textAlign: 'center' }}>
+        <Spin />
+      </div>
+    );
+  }
 
   const effectiveProject = project || fallbackProject;
   if (!effectiveProject) {

@@ -25,10 +25,30 @@ export interface ProductAccessResult {
   reload: () => Promise<void>;
 }
 
+interface CachedProjectAccess {
+  project: Project | null;
+  role: ProjectRole | null;
+}
+
+interface CachedProductAccess {
+  project: Project | null;
+  product: Product | null;
+  role: ProjectRole | null;
+}
+
+const projectCache = new Map<string, CachedProjectAccess>();
+const productCache = new Map<string, CachedProductAccess>();
+
+export function clearProjectAccessCache(): void {
+  projectCache.clear();
+  productCache.clear();
+}
+
 export function useProjectAccess(projectId: string | undefined): ProjectAccessResult {
-  const [project, setProject] = useState<Project | null>(null);
-  const [role, setRole] = useState<ProjectRole | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const cached = projectId ? projectCache.get(projectId) : undefined;
+  const [project, setProject] = useState<Project | null>(() => cached?.project ?? null);
+  const [role, setRole] = useState<ProjectRole | null>(() => cached?.role ?? null);
+  const [isLoading, setIsLoading] = useState<boolean>(() => Boolean(projectId && !cached));
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -39,7 +59,9 @@ export function useProjectAccess(projectId: string | undefined): ProjectAccessRe
       return;
     }
 
-    setIsLoading(true);
+    if (!projectCache.has(projectId)) {
+      setIsLoading(true);
+    }
     setError(null);
 
     const [projectRes, roleRes] = await Promise.all([
@@ -51,12 +73,17 @@ export function useProjectAccess(projectId: string | undefined): ProjectAccessRe
       setError(projectRes.error.message);
       setProject(null);
       setRole(null);
+      projectCache.delete(projectId);
       setIsLoading(false);
       return;
     }
 
-    setProject((projectRes.data as Project | null) ?? null);
-    setRole((roleRes.data as ProjectRole | null) ?? null);
+    const nextProject = (projectRes.data as Project | null) ?? null;
+    const nextRole = (roleRes.data as ProjectRole | null) ?? null;
+    projectCache.set(projectId, { project: nextProject, role: nextRole });
+
+    setProject(nextProject);
+    setRole(nextRole);
     setIsLoading(false);
   }, [projectId]);
 
@@ -82,10 +109,14 @@ export function useProjectAccess(projectId: string | undefined): ProjectAccessRe
         setError(projectRes.error.message);
         setProject(null);
         setRole(null);
+        projectCache.delete(projectId);
       } else {
         setError(null);
-        setProject((projectRes.data as Project | null) ?? null);
-        setRole((roleRes.data as ProjectRole | null) ?? null);
+        const nextProject = (projectRes.data as Project | null) ?? null;
+        const nextRole = (roleRes.data as ProjectRole | null) ?? null;
+        projectCache.set(projectId, { project: nextProject, role: nextRole });
+        setProject(nextProject);
+        setRole(nextRole);
       }
       setIsLoading(false);
     })();
@@ -114,10 +145,13 @@ export function useProductAccess(
   projectId: string | undefined,
   productId: string | undefined,
 ): ProductAccessResult {
-  const [project, setProject] = useState<Project | null>(null);
-  const [product, setProduct] = useState<Product | null>(null);
-  const [role, setRole] = useState<ProjectRole | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const cacheKey = projectId && productId ? `${projectId}:${productId}` : undefined;
+  const cached = cacheKey ? productCache.get(cacheKey) : undefined;
+
+  const [project, setProject] = useState<Project | null>(() => cached?.project ?? null);
+  const [product, setProduct] = useState<Product | null>(() => cached?.product ?? null);
+  const [role, setRole] = useState<ProjectRole | null>(() => cached?.role ?? null);
+  const [isLoading, setIsLoading] = useState<boolean>(() => Boolean(projectId && productId && !cached));
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -129,7 +163,9 @@ export function useProductAccess(
       return;
     }
 
-    setIsLoading(true);
+    if (!cacheKey || !productCache.has(cacheKey)) {
+      setIsLoading(true);
+    }
     setError(null);
 
     const [projectRes, productRes, roleRes] = await Promise.all([
@@ -148,15 +184,30 @@ export function useProductAccess(
       setProject(null);
       setProduct(null);
       setRole(null);
+      if (cacheKey) {
+        productCache.delete(cacheKey);
+      }
       setIsLoading(false);
       return;
     }
 
-    setProject((projectRes.data as Project | null) ?? null);
-    setProduct((productRes.data as Product | null) ?? null);
-    setRole((roleRes.data as ProjectRole | null) ?? null);
+    const nextProject = (projectRes.data as Project | null) ?? null;
+    const nextProduct = (productRes.data as Product | null) ?? null;
+    const nextRole = (roleRes.data as ProjectRole | null) ?? null;
+
+    if (cacheKey) {
+      productCache.set(cacheKey, {
+        project: nextProject,
+        product: nextProduct,
+        role: nextRole,
+      });
+    }
+
+    setProject(nextProject);
+    setProduct(nextProduct);
+    setRole(nextRole);
     setIsLoading(false);
-  }, [projectId, productId]);
+  }, [cacheKey, projectId, productId]);
 
   useEffect(() => {
     let active = true;
@@ -188,11 +239,26 @@ export function useProductAccess(
         setProject(null);
         setProduct(null);
         setRole(null);
+        if (cacheKey) {
+          productCache.delete(cacheKey);
+        }
       } else {
         setError(null);
-        setProject((projectRes.data as Project | null) ?? null);
-        setProduct((productRes.data as Product | null) ?? null);
-        setRole((roleRes.data as ProjectRole | null) ?? null);
+        const nextProject = (projectRes.data as Project | null) ?? null;
+        const nextProduct = (productRes.data as Product | null) ?? null;
+        const nextRole = (roleRes.data as ProjectRole | null) ?? null;
+
+        if (cacheKey) {
+          productCache.set(cacheKey, {
+            project: nextProject,
+            product: nextProduct,
+            role: nextRole,
+          });
+        }
+
+        setProject(nextProject);
+        setProduct(nextProduct);
+        setRole(nextRole);
       }
       setIsLoading(false);
     })();
@@ -200,7 +266,7 @@ export function useProductAccess(
     return () => {
       active = false;
     };
-  }, [projectId, productId]);
+  }, [cacheKey, projectId, productId]);
 
   const isOwner = role === 'owner';
   const canEditProject =

@@ -70,7 +70,7 @@ export const BomPnpPage: React.FC = () => {
     isLoading: isAccessLoading,
   } = useProductAccess(projectId, effectiveProductId);
 
-  const { project: fallbackProject } = useProjectAccess(projectId);
+  const { project: fallbackProject, isLoading: isProjectAccessLoading } = useProjectAccess(projectId);
 
   const [releases, setReleases] = useState<Release[]>([]);
   const [selectedReleaseId, setSelectedReleaseId] = useState<string>(
@@ -869,7 +869,8 @@ export const BomPnpPage: React.FC = () => {
     },
   ];
 
-  if (isAccessLoading || isLoading) {
+  const accessLoading = effectiveProductId ? isAccessLoading : isProjectAccessLoading;
+  if (accessLoading || isProjectAccessLoading || isLoading) {
     return (
       <div style={{ padding: tokens.spacing.xxl, textAlign: 'center' }}>
         <Spin />

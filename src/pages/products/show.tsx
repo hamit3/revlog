@@ -481,14 +481,12 @@ export const ProductShowPage: React.FC = () => {
 
   return (
     <Show
+      goBack={false}
       resource="products"
       recordItemId={product.id}
       breadcrumb={false}
       canEdit={false}
       canDelete={false}
-      headerProps={{
-        onBack: () => navigate(`/projects/${project.id}`),
-      }}
       title={
         <PageHeaderTitle
           title={product.name}

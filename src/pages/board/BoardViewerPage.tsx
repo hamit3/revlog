@@ -781,6 +781,7 @@ export const BoardViewerPage: React.FC = () => {
 
   return (
     <PageHeader
+      backIcon={false}
       title={
         <PageHeaderTitle
           title={t('boardViewer.pageTitle')}

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router';
+import { useParams } from 'react-router';
 import { useInvalidate, useNotification, useTranslate } from '@refinedev/core';
 import { Edit } from '@refinedev/antd';
 import {
@@ -70,7 +70,6 @@ function memberInitials(fullName?: string | null, email?: string | null): string
 
 export const ProjectSettingsPage: React.FC = () => {
   const t = useTranslate();
-  const navigate = useNavigate();
   const { projectId } = useParams<{ projectId: string }>();
   const invalidate = useInvalidate();
   const { open: notify } = useNotification();
@@ -581,14 +580,12 @@ export const ProjectSettingsPage: React.FC = () => {
 
   return (
     <Edit
+      goBack={false}
       resource="projects"
       recordItemId={project.id}
       breadcrumb={false}
       canDelete={false}
       footerButtons={() => null}
-      headerButtons={() => (
-        <Button onClick={() => navigate(`/projects/${project.id}`)}>{t('common.back')}</Button>
-      )}
       title={
         <PageHeaderTitle
           title={t('settings.pageTitle')}
@@ -596,9 +593,6 @@ export const ProjectSettingsPage: React.FC = () => {
           badge={project.archived ? <StatusBadge kind="archived" /> : undefined}
         />
       }
-      headerProps={{
-        onBack: () => navigate(`/projects/${project.id}`),
-      }}
       contentProps={{
         styles: { body: { paddingTop: tokens.spacing.sm } },
       }}

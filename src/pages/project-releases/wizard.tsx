@@ -543,7 +543,7 @@ export const ProjectReleaseWizardPage: React.FC = () => {
 
   return (
     <PageHeader
-      onBack={() => navigate(`/projects/${project.id}`)}
+      backIcon={false}
       title={
         <PageHeaderTitle
           title={

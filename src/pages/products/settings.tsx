@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router';
+import { useParams } from 'react-router';
 import { useInvalidate, useNotification, useTranslate } from '@refinedev/core';
 import { Edit } from '@refinedev/antd';
 import {
@@ -41,7 +41,6 @@ interface ProductGeneralFormValues {
 
 export const ProductSettingsPage: React.FC = () => {
   const t = useTranslate();
-  const navigate = useNavigate();
   const { projectId, productId } = useParams<{ projectId: string; productId: string }>();
   const invalidate = useInvalidate();
   const { open: notify } = useNotification();
@@ -228,18 +227,14 @@ export const ProductSettingsPage: React.FC = () => {
     return <Alert type="error" showIcon message={t('products.notFound')} />;
   }
 
-  const productBase = `/projects/${project.id}/products/${product.id}`;
-
   return (
     <Edit
+      goBack={false}
       resource="products"
       recordItemId={product.id}
       breadcrumb={false}
       canDelete={false}
       footerButtons={() => null}
-      headerButtons={() => (
-        <Button onClick={() => navigate(productBase)}>{t('common.back')}</Button>
-      )}
       title={
         <PageHeaderTitle
           title={t('products.settingsTitle')}
@@ -247,9 +242,6 @@ export const ProductSettingsPage: React.FC = () => {
           badge={product.archived ? <StatusBadge kind="archived" /> : undefined}
         />
       }
-      headerProps={{
-        onBack: () => navigate(productBase),
-      }}
       contentProps={{
         styles: { body: { paddingTop: tokens.spacing.sm } },
       }}

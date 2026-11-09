@@ -10,12 +10,11 @@ import {
   Layout,
   Menu,
   Popover,
-  Tabs,
   Tag,
   Tooltip,
   Typography,
 } from 'antd';
-import type { MenuProps, TabsProps } from 'antd';
+import type { MenuProps } from 'antd';
 import {
   AppstoreOutlined,
   BlockOutlined,
@@ -275,11 +274,6 @@ export const AppLayout: React.FC = () => {
   );
 
   const projectProducts = useMemo(() => productsQuery.data?.data ?? [], [productsQuery.data?.data]);
-
-  const activeProjectProducts = useMemo(
-    () => projectProducts.filter((prod) => !prod.archived),
-    [projectProducts],
-  );
 
   const activeProduct = useMemo(
     () => (productId ? (projectProducts.find((p) => p.id === productId) ?? null) : null),
@@ -552,89 +546,6 @@ export const AppLayout: React.FC = () => {
       </Link>
     </div>
   ) : null;
-
-  // In-page Horizontal Product Tabs
-  const handleProductTabChange = useCallback(
-    (key: string) => {
-      if (!projectId) {
-        return;
-      }
-      if (key === 'all') {
-        const targetPath = resolveSwitchedToProjectScopePath(
-          location.pathname,
-          projectId,
-          productId,
-        );
-        navigate(targetPath);
-      } else {
-        const targetPath = resolveSwitchedProductPath(location.pathname, projectId, productId, key);
-        navigate(targetPath);
-      }
-    },
-    [location.pathname, navigate, productId, projectId],
-  );
-
-  const productTabItems = useMemo<TabsProps['items']>(() => {
-    if (!projectId) {
-      return [];
-    }
-    const items: NonNullable<TabsProps['items']> = [
-      {
-        key: 'all',
-        label: (
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: tokens.spacing.xs }}>
-            <AppstoreOutlined aria-hidden="true" />
-            <span>{t('nav.allProducts')}</span>
-          </span>
-        ),
-      },
-    ];
-
-    activeProjectProducts.forEach((prod) => {
-      items.push({
-        key: prod.id,
-        label: (
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: tokens.spacing.xs }}>
-            {getProductTypeIcon(prod.product_type)}
-            <span>{prod.name}</span>
-            {prod.code && (
-              <Tag bordered style={{ marginInlineEnd: 0 }}>
-                {prod.code}
-              </Tag>
-            )}
-          </span>
-        ),
-      });
-    });
-
-    return items;
-  }, [activeProjectProducts, projectId, t]);
-
-  const newProductTabExtra = useMemo(() => {
-    if (!projectId) {
-      return null;
-    }
-    return (
-      <Button
-        type="dashed"
-        size="small"
-        icon={<PlusOutlined aria-hidden="true" />}
-        onClick={() => navigate(`/projects/${projectId}/products/new`)}
-      >
-        {t('nav.newProduct')}
-      </Button>
-    );
-  }, [navigate, projectId, t]);
-
-  const activeProductTabKey = useMemo(() => {
-    if (!projectId) {
-      return undefined;
-    }
-    if (location.pathname === `/projects/${projectId}/products/new`) {
-      return '';
-    }
-    return productId ?? 'all';
-  }, [location.pathname, productId, projectId]);
 
   const displayName =
     identity?.name && identity.name !== identity.email
@@ -948,19 +859,6 @@ export const AppLayout: React.FC = () => {
               width: '100%',
             }}
           >
-            {/* Horizontal In-Page Product Tabs */}
-            {projectId && (
-              <div className="revlog-product-tabs-container">
-                <Tabs
-                  activeKey={activeProductTabKey}
-                  onChange={handleProductTabChange}
-                  items={productTabItems}
-                  tabBarExtraContent={newProductTabExtra}
-                  style={{ marginBottom: tokens.spacing.md }}
-                />
-              </div>
-            )}
-
             <Outlet />
           </div>
         </main>

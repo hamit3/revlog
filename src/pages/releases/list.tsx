@@ -194,9 +194,6 @@ export const ReleaseListPage: React.FC = () => {
           subtitle={`${project.name} / ${product.name} · ${t('releases.subtitle')}`}
         />
       }
-      headerProps={{
-        onBack: () => navigate(productBase),
-      }}
       headerButtons={() =>
         canEditContent ? (
           <Button

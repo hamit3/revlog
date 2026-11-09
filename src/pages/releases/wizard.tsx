@@ -590,7 +590,7 @@ export const ReleaseWizardPage: React.FC = () => {
 
   return (
     <PageHeader
-      onBack={() => navigate(productBase)}
+      backIcon={false}
       title={
         <PageHeaderTitle
           title={draftRelease ? t('releases.wizardTitleEdit') : t('releases.wizardTitleNew')}

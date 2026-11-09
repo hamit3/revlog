@@ -200,6 +200,7 @@ export const ProjectShowPage: React.FC = () => {
 
   return (
     <Show
+      goBack={false}
       resource="projects"
       recordItemId={project.id}
       breadcrumb={false}

@@ -885,7 +885,7 @@ export const BomPnpPage: React.FC = () => {
 
   if (products.length === 0 && !product) {
     return (
-      <PageHeader title={<PageHeaderTitle title={t('bomPnp.pageTitle')} />}>
+      <PageHeader backIcon={false} title={<PageHeaderTitle title={t('bomPnp.pageTitle')} />}>
         <Empty description={t('bomPnp.noProducts')} />
       </PageHeader>
     );
@@ -893,6 +893,7 @@ export const BomPnpPage: React.FC = () => {
 
   return (
     <PageHeader
+      backIcon={false}
       title={<PageHeaderTitle title={t('bomPnp.pageTitle')} subtitle={t('bomPnp.pageSubtitle')} />}
       extra={
         <Space size="small">
